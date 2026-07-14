@@ -198,6 +198,22 @@ type PerformanceStats = {
       node_name: string
     }>
   }
+  group_concurrency_stats?: {
+    total_active: number
+    http_active: number
+    websocket_active: number
+    total_users: number
+    entries: Array<{
+      user_id: number
+      username: string
+      group: string
+      active: number
+      http_active: number
+      websocket_active: number
+      limit: number
+      available: number
+    }>
+  }
 }
 
 export function PerformanceSection(props: Props) {
@@ -692,6 +708,85 @@ export function PerformanceSection(props: Props) {
                     <span className='text-muted-foreground'>Goroutines:</span>{' '}
                     {stats.memory_stats.num_goroutine}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {stats.group_concurrency_stats && (
+              <div className='space-y-3 rounded-lg border p-4'>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <p className='text-sm font-medium'>
+                    {t('User + group concurrency')}
+                  </p>
+                  <StatusBadge variant='neutral' copyable={false}>
+                    {t('Total')}: {stats.group_concurrency_stats.total_active}
+                  </StatusBadge>
+                  <StatusBadge variant='neutral' copyable={false}>
+                    HTTP: {stats.group_concurrency_stats.http_active}
+                  </StatusBadge>
+                  <StatusBadge variant='neutral' copyable={false}>
+                    WebSocket: {stats.group_concurrency_stats.websocket_active}
+                  </StatusBadge>
+                  <StatusBadge variant='neutral' copyable={false}>
+                    {t('Users')}: {stats.group_concurrency_stats.total_users}
+                  </StatusBadge>
+                </div>
+                <div className='overflow-x-auto'>
+                  <table className='w-full min-w-3xl text-left text-xs'>
+                    <thead className='text-muted-foreground border-b'>
+                      <tr>
+                        <th className='px-2 py-2 font-medium'>{t('User')}</th>
+                        <th className='px-2 py-2 font-medium'>{t('Group')}</th>
+                        <th className='px-2 py-2 font-medium'>HTTP</th>
+                        <th className='px-2 py-2 font-medium'>WebSocket</th>
+                        <th className='px-2 py-2 font-medium'>{t('Used')}</th>
+                        <th className='px-2 py-2 font-medium'>{t('Limit')}</th>
+                        <th className='px-2 py-2 font-medium'>
+                          {t('Available')}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stats.group_concurrency_stats.entries.length === 0 ? (
+                        <tr>
+                          <td
+                            className='text-muted-foreground px-2 py-4 text-center'
+                            colSpan={7}
+                          >
+                            {t('No Data')}
+                          </td>
+                        </tr>
+                      ) : (
+                        stats.group_concurrency_stats.entries.map((entry) => (
+                          <tr
+                            className='border-b last:border-b-0'
+                            key={`${entry.user_id}-${entry.group}`}
+                          >
+                            <td className='px-2 py-2'>
+                              {entry.username || '-'}
+                              <span className='text-muted-foreground ml-1'>
+                                #{entry.user_id}
+                              </span>
+                            </td>
+                            <td className='px-2 py-2'>{entry.group || '-'}</td>
+                            <td className='px-2 py-2'>{entry.http_active}</td>
+                            <td className='px-2 py-2'>
+                              {entry.websocket_active}
+                            </td>
+                            <td className='px-2 py-2'>{entry.active}</td>
+                            <td className='px-2 py-2'>
+                              {entry.limit === 0 ? t('Unlimited') : entry.limit}
+                            </td>
+                            <td className='px-2 py-2'>
+                              {entry.limit === 0
+                                ? t('Unlimited')
+                                : entry.available}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}

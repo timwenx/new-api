@@ -3830,6 +3830,14 @@
     "默认折叠侧边栏": "Default collapse sidebar",
     "默认测试模型": "Default Test Model",
     "默认用户消息": "Default User Message",
-    "默认补全倍率": "Default completion ratio"
+    "默认补全倍率": "Default completion ratio",
+    "用户+分组 HTTP+WS 最大并发（始终生效）": "User + group HTTP + WS max concurrency (always active)",
+    "默认 3，0 代表不限制；HTTP 与 WS 共享额度，独立于周期速率限制": "Default 3; 0 means unlimited. HTTP and WS share the quota independently of period rate limits",
+    "使用 JSON 对象格式，格式为：{\"组名\": [最多请求次数, 最多请求完成次数, 最大并发数]}": "Use JSON object format: {\"group\": [max requests, max successful requests, max concurrency]}",
+    "示例：{\"default\": [200, 100, 3], \"vip\": [0, 1000, 10]}。": "Example: {\"default\": [200, 100, 3], \"vip\": [0, 1000, 10]}.",
+    "[最大并发数]必须大于等于0且不超过2147483647，0代表不限制。": "[Max concurrency] must be at least 0 and no greater than 2147483647. 0 means unlimited.",
+    "旧的二元数组配置会继承上方全局并发限制。": "Legacy two-value array configs inherit the global concurrency limit above.",
+    "用户 + 分组并发": "User + group concurrency",
+    "限制": "Limit"
   }
 }

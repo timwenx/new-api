@@ -4218,6 +4218,14 @@
     "默认折叠侧边栏": "Mặc định thu gọn thanh bên",
     "默认测试模型": "Mô hình kiểm tra mặc định",
     "默认用户消息": "Xin chào",
-    "默认补全倍率": "Tỷ lệ hoàn thành mặc định"
+    "默认补全倍率": "Tỷ lệ hoàn thành mặc định",
+    "用户+分组 HTTP+WS 最大并发（始终生效）": "Số yêu cầu HTTP + WS đồng thời tối đa theo người dùng và nhóm (luôn có hiệu lực)",
+    "默认 3，0 代表不限制；HTTP 与 WS 共享额度，独立于周期速率限制": "Mặc định 3; 0 nghĩa là không giới hạn. HTTP và WS dùng chung hạn mức, độc lập với giới hạn tốc độ theo chu kỳ",
+    "使用 JSON 对象格式，格式为：{\"组名\": [最多请求次数, 最多请求完成次数, 最大并发数]}": "Dùng đối tượng JSON theo định dạng: {\"nhóm\": [số yêu cầu tối đa, số yêu cầu thành công tối đa, số đồng thời tối đa]}",
+    "示例：{\"default\": [200, 100, 3], \"vip\": [0, 1000, 10]}。": "Ví dụ: {\"default\": [200, 100, 3], \"vip\": [0, 1000, 10]}.",
+    "[最大并发数]必须大于等于0且不超过2147483647，0代表不限制。": "[Số đồng thời tối đa] phải từ 0 đến 2147483647. 0 nghĩa là không giới hạn.",
+    "旧的二元数组配置会继承上方全局并发限制。": "Cấu hình mảng hai giá trị cũ kế thừa giới hạn đồng thời toàn cục ở trên.",
+    "用户 + 分组并发": "Số yêu cầu đồng thời theo người dùng và nhóm",
+    "限制": "Giới hạn"
   }
 }
