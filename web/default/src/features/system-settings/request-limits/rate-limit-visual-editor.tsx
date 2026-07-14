@@ -32,6 +32,7 @@ import { RateLimitDialog, type RateLimitEntryData } from './rate-limit-dialog'
 type RateLimitVisualEditorProps = {
   value: string
   onChange: (value: string) => void
+  defaultConcurrency: number
 }
 
 type RateLimitEntry = RateLimitEntryData
@@ -39,6 +40,7 @@ type RateLimitEntry = RateLimitEntryData
 export function RateLimitVisualEditor({
   value,
   onChange,
+  defaultConcurrency,
 }: RateLimitVisualEditorProps) {
   const { t } = useTranslation()
   const [searchText, setSearchText] = useState('')
@@ -59,20 +61,23 @@ export function RateLimitVisualEditor({
       .map(([groupName, limits]) => {
         if (
           Array.isArray(limits) &&
-          limits.length === 2 &&
+          (limits.length === 2 || limits.length === 3) &&
           typeof limits[0] === 'number' &&
-          typeof limits[1] === 'number'
+          typeof limits[1] === 'number' &&
+          (limits.length === 2 || typeof limits[2] === 'number')
         ) {
           return {
             groupName,
             maxRequests: limits[0],
             maxSuccess: limits[1],
+            maxConcurrency:
+              limits.length === 3 ? limits[2] : defaultConcurrency,
           }
         }
         return null
       })
       .filter((item): item is RateLimitEntry => item !== null)
-  }, [value])
+  }, [defaultConcurrency, value])
 
   const filteredRateLimits = useMemo(() => {
     if (!searchText) return rateLimits
@@ -93,7 +98,11 @@ export function RateLimitVisualEditor({
       delete parsed[editData.groupName]
     }
 
-    parsed[data.groupName] = [data.maxRequests, data.maxSuccess]
+    parsed[data.groupName] = [
+      data.maxRequests,
+      data.maxSuccess,
+      data.maxConcurrency,
+    ]
 
     onChange(JSON.stringify(parsed, null, 2))
   }
@@ -180,6 +189,19 @@ export function RateLimitVisualEditor({
             ),
           },
           {
+            id: 'max-concurrency',
+            header: t('HTTP + WebSocket concurrency'),
+            className: 'text-right',
+            cellClassName: 'text-right',
+            cell: (limit) => (
+              <span className='font-mono'>
+                {limit.maxConcurrency === 0
+                  ? t('Unlimited')
+                  : limit.maxConcurrency.toLocaleString()}
+              </span>
+            ),
+          },
+          {
             id: 'actions',
             header: t('Actions'),
             className: 'text-right',
@@ -202,6 +224,7 @@ export function RateLimitVisualEditor({
         onOpenChange={setDialogOpen}
         onSave={handleSave}
         editData={editData}
+        defaultConcurrency={defaultConcurrency}
       />
     </div>
   )

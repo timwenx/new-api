@@ -55,10 +55,18 @@ const isValidJSON = (value: string | undefined) => {
       return false
     }
     for (const [, val] of Object.entries(parsed)) {
-      if (!Array.isArray(val) || val.length !== 2) return false
+      if (!Array.isArray(val) || (val.length !== 2 && val.length !== 3)) {
+        return false
+      }
       if (typeof val[0] !== 'number' || typeof val[1] !== 'number') return false
       if (val[0] < 0 || val[1] < 1) return false
       if (val[0] > 2147483647 || val[1] > 2147483647) return false
+      if (
+        val.length === 3 &&
+        (typeof val[2] !== 'number' || val[2] < 0 || val[2] > 2147483647)
+      ) {
+        return false
+      }
     }
     return true
   } catch {
@@ -72,6 +80,7 @@ const createRateLimitSchema = (t: (key: string) => string) =>
     ModelRequestRateLimitDurationMinutes: z.number().min(0),
     ModelRequestRateLimitCount: z.number().min(0).max(100000000),
     ModelRequestRateLimitSuccessCount: z.number().min(1).max(100000000),
+    ModelRequestConcurrencyLimit: z.number().min(0).max(2147483647),
     ModelRequestRateLimitGroup: z
       .string()
       .optional()
@@ -146,7 +155,7 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
             )}
           />
 
-          <div className='grid gap-4 md:grid-cols-3'>
+          <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
             <FormField
               control={form.control}
               name='ModelRequestRateLimitDurationMinutes'
@@ -238,6 +247,37 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                 </FormItem>
               )}
             />
+
+            <FormField
+              control={form.control}
+              name='ModelRequestConcurrencyLimit'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('HTTP + WebSocket concurrency')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={0}
+                      max={2147483647}
+                      step={1}
+                      {...field}
+                      onChange={(e) =>
+                        field.onChange(Number.parseInt(e.target.value) || 0)
+                      }
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Maximum active requests per user and group. Default 3, 0 = unlimited.'
+                    )}{' '}
+                    {t(
+                      'This limit is always active and independent of period rate limiting.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           </div>
 
           <FormField
@@ -271,11 +311,14 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                     <RateLimitVisualEditor
                       value={field.value || ''}
                       onChange={field.onChange}
+                      defaultConcurrency={form.watch(
+                        'ModelRequestConcurrencyLimit'
+                      )}
                     />
                   ) : (
                     <Textarea
                       rows={8}
-                      placeholder={`{\n  "default": [200, 100],\n  "vip": [0, 1000]\n}`}
+                      placeholder={`{\n  "default": [200, 100, 3],\n  "vip": [0, 1000, 10]\n}`}
                       className='font-mono text-sm'
                       {...field}
                     />
@@ -288,15 +331,25 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                       <ul className='list-inside list-disc space-y-0.5 pl-2'>
                         <li>
                           {t('JSON object:')}{' '}
-                          {`{"groupName": [maxRequests, maxSuccess]}`}
+                          {`{"groupName": [maxRequests, maxSuccess, maxConcurrency]}`}
                         </li>
                         <li>
                           {t('Example:')}{' '}
-                          {`{"default": [200, 100], "vip": [0, 1000]}`}
+                          {`{"default": [200, 100, 3], "vip": [0, 1000, 10]}`}
                         </li>
                         <li>
                           {t(
                             'maxRequests ≥ 0, maxSuccess ≥ 1, both ≤ 2,147,483,647'
+                          )}
+                        </li>
+                        <li>
+                          {t(
+                            'maxConcurrency ≥ 0 and ≤ 2,147,483,647; 0 = unlimited'
+                          )}
+                        </li>
+                        <li>
+                          {t(
+                            'Legacy two-value arrays inherit the global concurrency limit'
                           )}
                         </li>
                         <li>

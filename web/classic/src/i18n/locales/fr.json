@@ -3684,6 +3684,14 @@
     "默认折叠侧边栏": "Réduire la barre latérale par défaut",
     "默认测试模型": "Modèle de test par défaut",
     "默认用户消息": "Bonjour",
-    "默认补全倍率": "Taux de complétion par défaut"
+    "默认补全倍率": "Taux de complétion par défaut",
+    "用户+分组 HTTP+WS 最大并发（始终生效）": "Concurrence HTTP + WS max par utilisateur et groupe (toujours active)",
+    "默认 3，0 代表不限制；HTTP 与 WS 共享额度，独立于周期速率限制": "Par défaut 3 ; 0 signifie illimité. HTTP et WS partagent le quota indépendamment des limites de débit par période",
+    "使用 JSON 对象格式，格式为：{\"组名\": [最多请求次数, 最多请求完成次数, 最大并发数]}": "Utilisez un objet JSON au format : {\"groupe\": [requêtes max, requêtes réussies max, concurrence max]}",
+    "示例：{\"default\": [200, 100, 3], \"vip\": [0, 1000, 10]}。": "Exemple : {\"default\": [200, 100, 3], \"vip\": [0, 1000, 10]}.",
+    "[最大并发数]必须大于等于0且不超过2147483647，0代表不限制。": "[Concurrence maximale] doit être comprise entre 0 et 2147483647. 0 signifie illimité.",
+    "旧的二元数组配置会继承上方全局并发限制。": "Les anciennes configurations à deux valeurs héritent de la limite globale de concurrence ci-dessus.",
+    "用户 + 分组并发": "Concurrence par utilisateur et groupe",
+    "限制": "Limite"
   }
 }
