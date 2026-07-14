@@ -182,6 +182,22 @@ type PerformanceStats = {
   config?: {
     is_running_in_container: boolean
   }
+  websocket_stats?: {
+    total_connections: number
+    total_users: number
+    connections: Array<{
+      connection_id: number
+      user_id: number
+      username: string
+      token_name: string
+      channel_id: number
+      kind: string
+      transport: string
+      model: string
+      connected_at: number
+      node_name: string
+    }>
+  }
 }
 
 export function PerformanceSection(props: Props) {
@@ -676,6 +692,87 @@ export function PerformanceSection(props: Props) {
                     <span className='text-muted-foreground'>Goroutines:</span>{' '}
                     {stats.memory_stats.num_goroutine}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {stats.websocket_stats && (
+              <div className='space-y-3 rounded-lg border p-4'>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <p className='text-sm font-medium'>
+                    {t('System Performance Monitoring')} · WebSocket
+                  </p>
+                  <StatusBadge variant='neutral' copyable={false}>
+                    {t('Total')}: {stats.websocket_stats.total_connections}
+                  </StatusBadge>
+                  <StatusBadge variant='neutral' copyable={false}>
+                    {t('Users')}: {stats.websocket_stats.total_users}
+                  </StatusBadge>
+                </div>
+                <div className='overflow-x-auto'>
+                  <table className='w-full min-w-3xl text-left text-xs'>
+                    <thead className='text-muted-foreground border-b'>
+                      <tr>
+                        <th className='px-2 py-2 font-medium'>{t('User')}</th>
+                        <th className='px-2 py-2 font-medium'>{t('Token')}</th>
+                        <th className='px-2 py-2 font-medium'>{t('Type')}</th>
+                        <th className='px-2 py-2 font-medium'>{t('Model')}</th>
+                        <th className='px-2 py-2 font-medium'>
+                          {t('Channel')}
+                        </th>
+                        <th className='px-2 py-2 font-medium'>
+                          {t('Created At')}
+                        </th>
+                        <th className='px-2 py-2 font-medium'>{t('Node')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stats.websocket_stats.connections.length === 0 ? (
+                        <tr>
+                          <td
+                            className='text-muted-foreground px-2 py-4 text-center'
+                            colSpan={7}
+                          >
+                            {t('No Data')}
+                          </td>
+                        </tr>
+                      ) : (
+                        stats.websocket_stats.connections.map((connection) => (
+                          <tr
+                            className='border-b last:border-b-0'
+                            key={`${connection.node_name}-${connection.connection_id}`}
+                          >
+                            <td className='px-2 py-2'>
+                              {connection.username || '-'}
+                              <span className='text-muted-foreground ml-1'>
+                                #{connection.user_id}
+                              </span>
+                            </td>
+                            <td className='px-2 py-2'>
+                              {connection.token_name || '-'}
+                            </td>
+                            <td className='px-2 py-2'>
+                              {connection.kind} / {connection.transport || 'ws'}
+                            </td>
+                            <td className='px-2 py-2 font-mono'>
+                              {connection.model || '-'}
+                            </td>
+                            <td className='px-2 py-2'>
+                              #{connection.channel_id}
+                            </td>
+                            <td className='px-2 py-2 whitespace-nowrap'>
+                              {new Date(
+                                connection.connected_at * 1000
+                              ).toLocaleString()}
+                            </td>
+                            <td className='px-2 py-2'>
+                              {connection.node_name}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
