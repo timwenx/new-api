@@ -640,6 +640,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         return (
           <StreamTpsCell
             isStream={log.is_stream}
+            isWebSocket={other?.ws === true}
             tokensPerSecond={tokensPerSecond}
             streamStatus={other?.stream_status}
           />
@@ -761,7 +762,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
             useTimeSec={useTime}
             completionTokens={log.completion_tokens}
             frtMs={other?.frt}
-            isStream={log.is_stream}
+            isStream={log.is_stream || other?.ws === true}
           />
         )
       },

@@ -294,12 +294,13 @@ function MobileStreamTimingField({ log }: { log: UsageLog }) {
         useTimeSec={useTime}
         completionTokens={log.completion_tokens}
         frtMs={other?.frt}
-        isStream={log.is_stream}
+        isStream={log.is_stream || other?.ws === true}
         indicator='dot'
         className='min-w-0 flex-1'
       />
       <StreamTpsCell
         isStream={log.is_stream}
+        isWebSocket={other?.ws === true}
         tokensPerSecond={tokensPerSecond}
         streamStatus={other?.stream_status}
         className='shrink-0'
