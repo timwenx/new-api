@@ -10,10 +10,14 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	appmodel "github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
 
+	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNormalizeResponsesWSCreateEventWrapper(t *testing.T) {
@@ -313,6 +317,56 @@ func TestObserveUpstreamFailedReleasesCurrent(t *testing.T) {
 	if committed == nil || *committed {
 		t.Fatalf("commit success = %v, want false", committed)
 	}
+}
+
+func TestResponsesWSModelSwitchResetsUpstreamWithoutClosingClient(t *testing.T) {
+	clientPeer, client, cleanupClient := newTestWebSocketPair(t)
+	defer cleanupClient()
+	target, _, cleanupTarget := newTestWebSocketPair(t)
+	defer cleanupTarget()
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+
+	unregistered := false
+	session := &responsesWSSession{
+		c:             ctx,
+		client:        client,
+		target:        target,
+		unregister:    func() { unregistered = true },
+		lockedModel:   "gpt-5.6-sol",
+		lockedChannel: &appmodel.Channel{Id: 10},
+	}
+
+	session.resetUpstreamForModel("gpt-5.5")
+
+	assert.Nil(t, session.getTarget())
+	assert.Empty(t, session.lockedModel)
+	assert.Nil(t, session.lockedChannel)
+	assert.True(t, unregistered)
+	require.NoError(t, session.writeClient(websocket.TextMessage, []byte("still-open")))
+	require.NoError(t, clientPeer.SetReadDeadline(time.Now().Add(time.Second)))
+	_, message, err := clientPeer.ReadMessage()
+	require.NoError(t, err)
+	assert.Equal(t, "still-open", string(message))
+}
+
+func TestResponsesWSRejectsConcurrentModelSwitchWithoutResettingUpstream(t *testing.T) {
+	target, cleanup := newTestResponsesWSTarget(t)
+	defer cleanup()
+	state := &responsesWSCallState{}
+	session := &responsesWSSession{
+		target:      target,
+		lockedModel: "gpt-5.6-sol",
+		current:     state,
+	}
+
+	apiErr := session.handleResponseCreate(responsesWSCreateRequest{
+		Request: dto.OpenAIResponsesRequest{Model: "gpt-5.5"},
+	}, "evt_switch")
+
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusConflict, apiErr.StatusCode)
+	assert.Same(t, target, session.getTarget())
+	assert.Equal(t, "gpt-5.6-sol", session.lockedModel)
 }
 
 func newTestResponsesWSTarget(t *testing.T) (*websocket.Conn, func()) {

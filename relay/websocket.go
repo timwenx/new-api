@@ -37,7 +37,14 @@ func WssHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.
 		info.TargetWs = resp.(*websocket.Conn)
 		defer info.TargetWs.Close()
 		var closeOnce sync.Once
-		unregister := wsmanager.Register(info.ChannelId, wsmanager.KindRealtime, func(reason string) {
+		unregister := wsmanager.RegisterWithInfo(info.ChannelId, wsmanager.KindRealtime, wsmanager.ConnectionInfo{
+			UserID:      info.UserId,
+			Username:    c.GetString("username"),
+			TokenName:   c.GetString("token_name"),
+			Model:       info.OriginModelName,
+			Transport:   "ws",
+			ConnectedAt: time.Now().Unix(),
+		}, func(reason string) {
 			closeOnce.Do(func() {
 				deadline := time.Now().Add(time.Second)
 				closeMessage := websocket.FormatCloseMessage(websocket.ClosePolicyViolation, reason)

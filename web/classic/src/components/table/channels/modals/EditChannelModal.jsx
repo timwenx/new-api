@@ -208,6 +208,7 @@ const EditChannelModal = (props) => {
     allow_include_obfuscation: false,
     allow_inference_geo: false,
     allow_speed: false,
+    responses_websocket_enabled: true,
     claude_beta_query: false,
     upstream_model_update_check_enabled: false,
     upstream_model_update_auto_sync_enabled: false,
@@ -908,6 +909,10 @@ const EditChannelModal = (props) => {
           data.allow_inference_geo =
             parsedSettings.allow_inference_geo || false;
           data.allow_speed = parsedSettings.allow_speed || false;
+          data.responses_websocket_enabled =
+            typeof parsedSettings.responses_websocket_enabled === 'boolean'
+              ? parsedSettings.responses_websocket_enabled
+              : true;
           data.claude_beta_query = parsedSettings.claude_beta_query || false;
           data.upstream_model_update_check_enabled =
             parsedSettings.upstream_model_update_check_enabled === true;
@@ -938,6 +943,7 @@ const EditChannelModal = (props) => {
           data.allow_include_obfuscation = false;
           data.allow_inference_geo = false;
           data.allow_speed = false;
+          data.responses_websocket_enabled = true;
           data.claude_beta_query = false;
           data.upstream_model_update_check_enabled = false;
           data.upstream_model_update_auto_sync_enabled = false;
@@ -956,6 +962,7 @@ const EditChannelModal = (props) => {
         data.allow_include_obfuscation = false;
         data.allow_inference_geo = false;
         data.allow_speed = false;
+        data.responses_websocket_enabled = true;
         data.claude_beta_query = false;
         data.upstream_model_update_check_enabled = false;
         data.upstream_model_update_auto_sync_enabled = false;
@@ -1787,6 +1794,8 @@ const EditChannelModal = (props) => {
       settings.allow_service_tier = localInputs.allow_service_tier === true;
       // 仅 OpenAI 渠道需要 store / safety_identifier / include_obfuscation
       if (localInputs.type === 1 || localInputs.type === 57) {
+        settings.responses_websocket_enabled =
+          localInputs.responses_websocket_enabled !== false;
         settings.disable_store = localInputs.disable_store === true;
         settings.allow_safety_identifier =
           localInputs.allow_safety_identifier === true;
@@ -1798,6 +1807,9 @@ const EditChannelModal = (props) => {
         settings.allow_speed = localInputs.allow_speed === true;
         settings.claude_beta_query = localInputs.claude_beta_query === true;
       }
+    }
+    if (localInputs.type !== 1 && localInputs.type !== 57) {
+      delete settings.responses_websocket_enabled;
     }
 
     settings.upstream_model_update_check_enabled =
@@ -1844,6 +1856,7 @@ const EditChannelModal = (props) => {
     delete localInputs.allow_include_obfuscation;
     delete localInputs.allow_inference_geo;
     delete localInputs.allow_speed;
+    delete localInputs.responses_websocket_enabled;
     delete localInputs.claude_beta_query;
     delete localInputs.upstream_model_update_check_enabled;
     delete localInputs.upstream_model_update_auto_sync_enabled;
@@ -2518,6 +2531,24 @@ const EditChannelModal = (props) => {
 
                   {inputs.type === 1 && (
                     <Form.Switch field='force_format' label={t('强制格式化')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('force_format', value)} extraText={t('强制将响应格式化为 OpenAI 标准格式（只适用于OpenAI渠道类型）')} />
+                  )}
+
+                  {(inputs.type === 1 || inputs.type === 57) && (
+                    <Form.Switch
+                      field='responses_websocket_enabled'
+                      label={t('支持 Responses WebSocket')}
+                      checkedText={t('开')}
+                      uncheckedText={t('关')}
+                      onChange={(value) =>
+                        handleChannelOtherSettingsChange(
+                          'responses_websocket_enabled',
+                          value,
+                        )
+                      }
+                      extraText={t(
+                        '关闭后 Codex 仍通过 WebSocket 连接 new-api，该渠道的上游请求改用 HTTP Responses 流式桥接',
+                      )}
+                    />
                   )}
 
                   <Form.Switch field='thinking_to_content' label={t('思考内容转换')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('thinking_to_content', value)} extraText={t('将 reasoning_content 转换为 <think> 标签拼接到内容中')} />
