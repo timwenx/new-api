@@ -430,6 +430,7 @@ func (s *responsesWSSession) prepareCall(create responsesWSCreateRequest, commit
 		}
 		return nil, nil, apiErr
 	}
+	relayInfo.ClientWs = s.client
 
 	return &responsesWSCallState{
 		info:       relayInfo,
