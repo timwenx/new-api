@@ -625,6 +625,91 @@ export default function SettingsPerformance(props) {
                 </Col>
               </Row>
 
+              {/* 用户 + 分组并发 */}
+              {stats.group_concurrency_stats && (
+                <Row gutter={16} style={{ marginBottom: 16 }}>
+                  <Col span={24}>
+                    <div
+                      style={{
+                        padding: 16,
+                        background: 'var(--semi-color-fill-0)',
+                        borderRadius: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          flexWrap: 'wrap',
+                          marginBottom: 12,
+                        }}
+                      >
+                        <Text strong>{t('用户 + 分组并发')}</Text>
+                        <Tag color='blue'>
+                          {t('总计')}:{' '}
+                          {stats.group_concurrency_stats.total_active}
+                        </Tag>
+                        <Tag color='cyan'>
+                          HTTP: {stats.group_concurrency_stats.http_active}
+                        </Tag>
+                        <Tag color='violet'>
+                          WebSocket:{' '}
+                          {stats.group_concurrency_stats.websocket_active}
+                        </Tag>
+                        <Tag color='green'>
+                          {t('用户')}:{' '}
+                          {stats.group_concurrency_stats.total_users}
+                        </Tag>
+                      </div>
+                      <Table
+                        size='small'
+                        pagination={false}
+                        rowKey={(record) => `${record.user_id}-${record.group}`}
+                        dataSource={stats.group_concurrency_stats.entries}
+                        columns={[
+                          {
+                            title: t('用户'),
+                            render: (_, record) =>
+                              `${record.username || '-'} (#${record.user_id})`,
+                          },
+                          {
+                            title: t('分组'),
+                            dataIndex: 'group',
+                            render: (value) => value || '-',
+                          },
+                          {
+                            title: 'HTTP',
+                            dataIndex: 'http_active',
+                          },
+                          {
+                            title: 'WebSocket',
+                            dataIndex: 'websocket_active',
+                          },
+                          {
+                            title: t('已用'),
+                            dataIndex: 'active',
+                          },
+                          {
+                            title: t('限制'),
+                            dataIndex: 'limit',
+                            render: (value) =>
+                              value === 0 ? t('无限制') : value,
+                          },
+                          {
+                            title: t('可用'),
+                            render: (_, record) =>
+                              record.limit === 0
+                                ? t('无限制')
+                                : record.available,
+                          },
+                        ]}
+                      />
+                    </div>
+                  </Col>
+                </Row>
+              )}
+
               {/* 当前节点活跃 WebSocket 连接 */}
               {stats.websocket_stats && (
                 <Row gutter={16} style={{ marginBottom: 16 }}>

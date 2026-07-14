@@ -45,6 +45,10 @@ const rateLimitDialogSchema = z.object({
     .number()
     .min(1, 'Must be ≥ 1')
     .max(2147483647, 'Must be ≤ 2,147,483,647'),
+  maxConcurrency: z
+    .number()
+    .min(0, 'Must be ≥ 0')
+    .max(2147483647, 'Must be ≤ 2,147,483,647'),
 })
 
 type RateLimitDialogFormValues = z.infer<typeof rateLimitDialogSchema>
@@ -55,6 +59,7 @@ export type RateLimitEntryData = {
   groupName: string
   maxRequests: number
   maxSuccess: number
+  maxConcurrency: number
 }
 
 type RateLimitDialogProps = {
@@ -62,6 +67,7 @@ type RateLimitDialogProps = {
   onOpenChange: (open: boolean) => void
   onSave: (data: RateLimitEntryData) => void
   editData?: RateLimitEntryData | null
+  defaultConcurrency: number
 }
 
 export function RateLimitDialog({
@@ -69,6 +75,7 @@ export function RateLimitDialog({
   onOpenChange,
   onSave,
   editData,
+  defaultConcurrency,
 }: RateLimitDialogProps) {
   const { t } = useTranslation()
   const isEditMode = !!editData
@@ -79,6 +86,7 @@ export function RateLimitDialog({
       groupName: '',
       maxRequests: 0,
       maxSuccess: 1,
+      maxConcurrency: defaultConcurrency,
     },
   })
 
@@ -90,9 +98,10 @@ export function RateLimitDialog({
         groupName: '',
         maxRequests: 0,
         maxSuccess: 1,
+        maxConcurrency: defaultConcurrency,
       })
     }
-  }, [editData, form, open])
+  }, [defaultConcurrency, editData, form, open])
 
   const handleSubmit = (values: RateLimitDialogFormValues) => {
     onSave(values)
@@ -213,6 +222,34 @@ export function RateLimitDialog({
                 </FormControl>
                 <FormDescription>
                   {t('Only successful requests count toward this limit.')}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='maxConcurrency'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('HTTP + WebSocket concurrency')}</FormLabel>
+                <FormControl>
+                  <Input
+                    type='number'
+                    min={0}
+                    max={2147483647}
+                    step={1}
+                    {...field}
+                    onChange={(e) =>
+                      field.onChange(Number.parseInt(e.target.value) || 0)
+                    }
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Maximum active requests per user in this group. 0 = unlimited.'
+                  )}
                 </FormDescription>
                 <FormMessage />
               </FormItem>

@@ -37,6 +37,7 @@ export default function RequestRateLimit(props) {
     ModelRequestRateLimitEnabled: false,
     ModelRequestRateLimitCount: -1,
     ModelRequestRateLimitSuccessCount: 1000,
+    ModelRequestConcurrencyLimit: 3,
     ModelRequestRateLimitDurationMinutes: 1,
     ModelRequestRateLimitGroup: '',
   });
@@ -140,6 +141,24 @@ export default function RequestRateLimit(props) {
                   }
                 />
               </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  label={t('用户+分组 HTTP+WS 最大并发（始终生效）')}
+                  step={1}
+                  min={0}
+                  max={2147483647}
+                  extraText={t(
+                    '默认 3，0 代表不限制；HTTP 与 WS 共享额度，独立于周期速率限制',
+                  )}
+                  field={'ModelRequestConcurrencyLimit'}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      ModelRequestConcurrencyLimit: String(value),
+                    })
+                  }
+                />
+              </Col>
             </Row>
             <Row>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
@@ -182,7 +201,7 @@ export default function RequestRateLimit(props) {
                 <Form.TextArea
                   label={t('分组速率限制')}
                   placeholder={t(
-                    '{\n  "default": [200, 100],\n  "vip": [0, 1000]\n}',
+                    '{\n  "default": [200, 100, 3],\n  "vip": [0, 1000, 10]\n}',
                   )}
                   field={'ModelRequestRateLimitGroup'}
                   autosize={{ minRows: 5, maxRows: 15 }}
@@ -200,12 +219,12 @@ export default function RequestRateLimit(props) {
                       <ul>
                         <li>
                           {t(
-                            '使用 JSON 对象格式，格式为：{"组名": [最多请求次数, 最多请求完成次数]}',
+                            '使用 JSON 对象格式，格式为：{"组名": [最多请求次数, 最多请求完成次数, 最大并发数]}',
                           )}
                         </li>
                         <li>
                           {t(
-                            '示例：{"default": [200, 100], "vip": [0, 1000]}。',
+                            '示例：{"default": [200, 100, 3], "vip": [0, 1000, 10]}。',
                           )}
                         </li>
                         <li>
@@ -218,6 +237,12 @@ export default function RequestRateLimit(props) {
                             '[最多请求次数]和[最多请求完成次数]的最大值为2147483647。',
                           )}
                         </li>
+                        <li>
+                          {t(
+                            '[最大并发数]必须大于等于0且不超过2147483647，0代表不限制。',
+                          )}
+                        </li>
+                        <li>{t('旧的二元数组配置会继承上方全局并发限制。')}</li>
                         <li>{t('分组速率配置优先级高于全局速率限制。')}</li>
                         <li>{t('限制周期统一使用上方配置的“限制周期”值。')}</li>
                       </ul>

@@ -10,7 +10,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/common/limiter"
-	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/types"
 
@@ -83,10 +82,7 @@ func modelRequestRateLimitConfig(c *gin.Context) (duration int64, totalMaxCount 
 	totalMaxCount = setting.ModelRequestRateLimitCount
 	successMaxCount = setting.ModelRequestRateLimitSuccessCount
 
-	group := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
-	if group == "" {
-		group = common.GetContextKeyString(c, constant.ContextKeyUserGroup)
-	}
+	group := modelRequestGroup(c)
 	groupTotalCount, groupSuccessCount, found := setting.GetGroupRateLimit(group)
 	if found {
 		totalMaxCount = groupTotalCount
