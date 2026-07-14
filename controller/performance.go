@@ -13,7 +13,9 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/pkg/groupconcurrency"
 	"github.com/QuantumNous/new-api/pkg/wsmanager"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -31,6 +33,27 @@ type PerformanceStats struct {
 	Config PerformanceConfig `json:"config"`
 	// 当前节点上的活跃 WebSocket 连接
 	WebSocketStats wsmanager.ConnectionStats `json:"websocket_stats"`
+	// 当前节点上按用户和分组统计的活跃模型请求
+	GroupConcurrencyStats GroupConcurrencyStats `json:"group_concurrency_stats"`
+}
+
+type GroupConcurrencyStats struct {
+	TotalActive     int                     `json:"total_active"`
+	HTTPActive      int                     `json:"http_active"`
+	WebSocketActive int                     `json:"websocket_active"`
+	TotalUsers      int                     `json:"total_users"`
+	Entries         []GroupConcurrencyEntry `json:"entries"`
+}
+
+type GroupConcurrencyEntry struct {
+	UserID          int    `json:"user_id"`
+	Username        string `json:"username"`
+	Group           string `json:"group"`
+	Active          int    `json:"active"`
+	HTTPActive      int    `json:"http_active"`
+	WebSocketActive int    `json:"websocket_active"`
+	Limit           int    `json:"limit"`
+	Available       int    `json:"available"`
 }
 
 // MemoryStats 内存统计
@@ -131,16 +154,49 @@ func GetPerformanceStats(c *gin.Context) {
 			NumGC:        memStats.NumGC,
 			NumGoroutine: runtime.NumGoroutine(),
 		},
-		DiskCacheInfo:  diskCacheInfo,
-		DiskSpaceInfo:  diskSpaceInfo,
-		Config:         config,
-		WebSocketStats: wsmanager.GetConnectionStats(),
+		DiskCacheInfo:         diskCacheInfo,
+		DiskSpaceInfo:         diskSpaceInfo,
+		Config:                config,
+		WebSocketStats:        wsmanager.GetConnectionStats(),
+		GroupConcurrencyStats: getGroupConcurrencyStats(),
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data":    stats,
 	})
+}
+
+func getGroupConcurrencyStats() GroupConcurrencyStats {
+	usage := groupconcurrency.Snapshot()
+	stats := GroupConcurrencyStats{
+		Entries: make([]GroupConcurrencyEntry, 0, len(usage)),
+	}
+	users := make(map[int]struct{})
+	for _, item := range usage {
+		active := item.HTTPActive + item.WebSocketActive
+		limit := setting.GetGroupConcurrencyLimit(item.Group)
+		available := 0
+		if limit > active {
+			available = limit - active
+		}
+		stats.TotalActive += active
+		stats.HTTPActive += item.HTTPActive
+		stats.WebSocketActive += item.WebSocketActive
+		users[item.UserID] = struct{}{}
+		stats.Entries = append(stats.Entries, GroupConcurrencyEntry{
+			UserID:          item.UserID,
+			Username:        item.Username,
+			Group:           item.Group,
+			Active:          active,
+			HTTPActive:      item.HTTPActive,
+			WebSocketActive: item.WebSocketActive,
+			Limit:           limit,
+			Available:       available,
+		})
+	}
+	stats.TotalUsers = len(users)
+	return stats
 }
 
 // ClearDiskCache 清理不活跃的磁盘缓存
