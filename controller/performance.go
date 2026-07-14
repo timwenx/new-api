@@ -13,6 +13,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/pkg/wsmanager"
 	"github.com/gin-gonic/gin"
 )
 
@@ -28,6 +29,8 @@ type PerformanceStats struct {
 	DiskSpaceInfo common.DiskSpaceInfo `json:"disk_space_info"`
 	// 配置信息
 	Config PerformanceConfig `json:"config"`
+	// 当前节点上的活跃 WebSocket 连接
+	WebSocketStats wsmanager.ConnectionStats `json:"websocket_stats"`
 }
 
 // MemoryStats 内存统计
@@ -128,9 +131,10 @@ func GetPerformanceStats(c *gin.Context) {
 			NumGC:        memStats.NumGC,
 			NumGoroutine: runtime.NumGoroutine(),
 		},
-		DiskCacheInfo: diskCacheInfo,
-		DiskSpaceInfo: diskSpaceInfo,
-		Config:        config,
+		DiskCacheInfo:  diskCacheInfo,
+		DiskSpaceInfo:  diskSpaceInfo,
+		Config:         config,
+		WebSocketStats: wsmanager.GetConnectionStats(),
 	}
 
 	c.JSON(http.StatusOK, gin.H{

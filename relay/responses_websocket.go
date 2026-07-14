@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -49,10 +50,11 @@ type responsesWSErrorEvent struct {
 }
 
 type responsesWSCallState struct {
-	info       *relaycommon.RelayInfo
-	usage      *dto.Usage
-	outputText strings.Builder
-	commitRate middleware.ModelRequestRateLimitCommit
+	info           *relaycommon.RelayInfo
+	usage          *dto.Usage
+	outputText     strings.Builder
+	httpInputItems []common.RawMessage
+	commitRate     middleware.ModelRequestRateLimitCommit
 }
 
 type responsesWSSession struct {
@@ -60,24 +62,32 @@ type responsesWSSession struct {
 	client         *websocket.Conn
 	target         *websocket.Conn
 	unregister     func()
+	httpCancel     context.CancelFunc
+	httpBridge     bool
 	lockedModel    string
 	lockedChannel  *appmodel.Channel
+	connectedAt    time.Time
 	nextEventIndex int
 	closeOnce      sync.Once
 
-	clientWriteMu sync.Mutex
-	targetWriteMu sync.Mutex
-	stateMu       sync.Mutex
-	current       *responsesWSCallState
+	clientWriteMu   sync.Mutex
+	targetWriteMu   sync.Mutex
+	stateMu         sync.Mutex
+	current         *responsesWSCallState
+	httpLifecycleMu sync.Mutex
+	httpWG          sync.WaitGroup
+	httpContextMu   sync.Mutex
+	httpResponseID  string
+	httpContext     []common.RawMessage
 }
 
 func ResponsesWebSocketHelper(c *gin.Context, client *websocket.Conn) *types.NewAPIError {
 	session := &responsesWSSession{
-		c:      c,
-		client: client,
+		c:           c,
+		client:      client,
+		connectedAt: time.Now(),
 	}
-	defer session.closeTarget()
-	defer session.failCurrent()
+	defer session.shutdown()
 
 	for {
 		messageType, message, err := client.ReadMessage()
@@ -95,6 +105,10 @@ func ResponsesWebSocketHelper(c *gin.Context, client *websocket.Conn) *types.New
 		}
 
 		if eventType != responsesWSEventTypeResponseCreate {
+			if session.usesHTTPBridge() {
+				session.sendError("", newResponsesWSInvalidRequestError(fmt.Errorf("event type %q is not supported when the selected channel uses HTTP streaming", eventType)))
+				continue
+			}
 			if !session.hasTarget() {
 				session.sendError("", newResponsesWSInvalidRequestError(errors.New("first responses websocket event must be response.create")))
 				continue
@@ -201,15 +215,6 @@ func normalizeResponsesWSCreateEvent(message []byte) (responsesWSCreateRequest, 
 
 func (s *responsesWSSession) handleResponseCreate(create responsesWSCreateRequest, eventID string) *types.NewAPIError {
 	req := create.Request
-	if s.lockedModel != "" && req.Model != s.lockedModel {
-		return types.NewErrorWithStatusCode(
-			fmt.Errorf("responses websocket connection is locked to model %q; got %q", s.lockedModel, req.Model),
-			types.ErrorCodeInvalidRequest,
-			http.StatusBadRequest,
-			types.ErrOptionWithSkipRetry(),
-		)
-	}
-
 	if s.hasCurrent() {
 		return types.NewErrorWithStatusCode(
 			errors.New("another response.create is already in progress on this websocket connection"),
@@ -223,12 +228,22 @@ func (s *responsesWSSession) handleResponseCreate(create responsesWSCreateReques
 	if apiErr != nil {
 		return apiErr
 	}
-
-	if !s.hasTarget() {
-		return s.connectAndSendFirst(create, commitRate)
+	if s.lockedModel != "" && req.Model != s.lockedModel {
+		if apiErr := checkResponsesWSModelAccess(s.c, req.Model); apiErr != nil {
+			commitRate(false)
+			return apiErr
+		}
+		s.resetUpstreamForModel(req.Model)
+	}
+	if s.usesHTTPBridge() {
+		return s.startResponsesHTTPBridge(create, eventID, commitRate, s.lockedChannel, false)
 	}
 
-	state, payload, apiErr := s.prepareCall(create, commitRate)
+	if !s.hasTarget() {
+		return s.connectAndSendFirst(create, eventID, commitRate)
+	}
+
+	state, payload, apiErr := s.prepareCall(create, commitRate, true)
 	if apiErr != nil {
 		commitRate(false)
 		return apiErr
@@ -267,18 +282,26 @@ func (s *responsesWSSession) handleTargetWriteFailureWithState(state *responsesW
 	return s.handleTargetWriteFailure(err)
 }
 
-func (s *responsesWSSession) connectAndSendFirst(create responsesWSCreateRequest, commitRate middleware.ModelRequestRateLimitCommit) *types.NewAPIError {
+func (s *responsesWSSession) connectAndSendFirst(create responsesWSCreateRequest, eventID string, commitRate middleware.ModelRequestRateLimitCommit) *types.NewAPIError {
 	req := create.Request
 	if err := checkResponsesWSModelAccess(s.c, req.Model); err != nil {
 		commitRate(false)
 		return err
 	}
+	requestBody, err := common.Marshal(req)
+	if err != nil {
+		commitRate(false)
+		return types.NewError(fmt.Errorf("marshal responses websocket request failed: %w", err), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+	}
+	common.CleanupBodyStorage(s.c)
+	s.c.Set(common.KeyRequestBody, requestBody)
 
 	retryParam := &service.RetryParam{
-		Ctx:        s.c,
-		TokenGroup: common.GetContextKeyString(s.c, appconstant.ContextKeyUsingGroup),
-		ModelName:  req.Model,
-		Retry:      common.GetPointer(0),
+		Ctx:         s.c,
+		TokenGroup:  common.GetContextKeyString(s.c, appconstant.ContextKeyUsingGroup),
+		ModelName:   req.Model,
+		RequestPath: s.c.Request.URL.Path,
+		Retry:       common.GetPointer(0),
 	}
 	if retryParam.TokenGroup == "" {
 		retryParam.TokenGroup = common.GetContextKeyString(s.c, appconstant.ContextKeyTokenGroup)
@@ -293,6 +316,10 @@ func (s *responsesWSSession) connectAndSendFirst(create responsesWSCreateRequest
 		}
 		addResponsesWSUsedChannel(s.c, channel.Id)
 
+		channelSettings := channel.GetOtherSettings()
+		if !channelSettings.SupportsResponsesWebSocket(channel.Type) {
+			return s.startResponsesHTTPBridge(create, eventID, commitRate, channel, true)
+		}
 		if channel.Type != appconstant.ChannelTypeOpenAI && channel.Type != appconstant.ChannelTypeCodex {
 			lastErr = types.NewErrorWithStatusCode(
 				fmt.Errorf("responses websocket only supports OpenAI and Codex channels, got channel type %d", channel.Type),
@@ -303,7 +330,7 @@ func (s *responsesWSSession) connectAndSendFirst(create responsesWSCreateRequest
 			continue
 		}
 
-		state, payload, apiErr := s.prepareCall(create, commitRate)
+		state, payload, apiErr := s.prepareCall(create, commitRate, true)
 		if apiErr != nil {
 			commitRate(false)
 			return apiErr
@@ -353,8 +380,7 @@ func (s *responsesWSSession) connectAndSendFirst(create responsesWSCreateRequest
 
 		s.lockedModel = req.Model
 		s.lockedChannel = channel
-		s.registerChannelClose(channel.Id)
-		service.RecordChannelAffinity(s.c, channel.Id)
+		s.registerChannelClose(channel.Id, req.Model, "ws")
 		s.startTargetReader()
 		return nil
 	}
@@ -392,8 +418,17 @@ func (s *responsesWSSession) processChannelError(channel *appmodel.Channel, apiE
 	return apiErr, service.ShouldRetryRelayError(s.c, apiErr, common.RetryTimes-retryParam.GetRetry())
 }
 
-func (s *responsesWSSession) prepareCall(create responsesWSCreateRequest, commitRate middleware.ModelRequestRateLimitCommit) (*responsesWSCallState, []byte, *types.NewAPIError) {
+func (s *responsesWSSession) prepareCall(create responsesWSCreateRequest, commitRate middleware.ModelRequestRateLimitCommit, upstreamWebSocket bool) (*responsesWSCallState, []byte, *types.NewAPIError) {
 	req := create.Request
+	var httpInputItems []common.RawMessage
+	if !upstreamWebSocket {
+		var apiErr *types.NewAPIError
+		req, httpInputItems, apiErr = s.prepareResponsesHTTPBridgeRequest(req)
+		if apiErr != nil {
+			return nil, nil, apiErr
+		}
+		req.Stream = common.GetPointer(true)
+	}
 	common.SetContextKey(s.c, appconstant.ContextKeyRequestStartTime, time.Now())
 	relayInfo := relaycommon.GenRelayInfoResponses(s.c, &req)
 	relayInfo.RequestId = fmt.Sprintf("%s-ws-%d", relayInfo.RequestId, s.nextEventIndex)
@@ -423,19 +458,24 @@ func (s *responsesWSSession) prepareCall(create responsesWSCreateRequest, commit
 		}
 	}
 
-	payload, apiErr := buildResponsesWSCreatePayload(s.c, relayInfo, req, create.Generate)
-	if apiErr != nil {
-		if relayInfo.Billing != nil {
-			relayInfo.Billing.Refund(s.c)
+	var payload []byte
+	if upstreamWebSocket {
+		var apiErr *types.NewAPIError
+		payload, apiErr = buildResponsesWSCreatePayload(s.c, relayInfo, req, create.Generate)
+		if apiErr != nil {
+			if relayInfo.Billing != nil {
+				relayInfo.Billing.Refund(s.c)
+			}
+			return nil, nil, apiErr
 		}
-		return nil, nil, apiErr
 	}
 	relayInfo.ClientWs = s.client
 
 	return &responsesWSCallState{
-		info:       relayInfo,
-		usage:      &dto.Usage{},
-		commitRate: commitRate,
+		info:           relayInfo,
+		usage:          &dto.Usage{},
+		httpInputItems: httpInputItems,
+		commitRate:     commitRate,
 	}, payload, nil
 }
 
@@ -566,11 +606,17 @@ func (s *responsesWSSession) startTargetReader() {
 		for {
 			messageType, message, err := target.ReadMessage()
 			if err != nil {
+				if !s.isTarget(target) {
+					return
+				}
 				if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 					logger.LogError(s.c, "responses websocket upstream read failed: "+err.Error())
 				}
 				s.failCurrent()
 				_ = s.client.Close()
+				return
+			}
+			if !s.isTarget(target) {
 				return
 			}
 			s.observeUpstreamMessage(message)
@@ -599,6 +645,9 @@ func (s *responsesWSSession) observeUpstreamMessage(message []byte) {
 	switch streamResponse.Type {
 	case "response.completed", "response.done", "response.incomplete":
 		s.applyTerminalResponseUsage(state, streamResponse.Response)
+		if s.lockedChannel != nil {
+			service.RecordChannelAffinity(s.c, s.lockedChannel.Id)
+		}
 		s.finishCall(state, true)
 	case "response.failed", "response.cancelled", "response.canceled":
 		s.finishCall(state, false)
@@ -733,6 +782,12 @@ func (s *responsesWSSession) getTarget() *websocket.Conn {
 	return s.target
 }
 
+func (s *responsesWSSession) isTarget(target *websocket.Conn) bool {
+	s.targetWriteMu.Lock()
+	defer s.targetWriteMu.Unlock()
+	return target != nil && s.target == target
+}
+
 func (s *responsesWSSession) setTarget(target *websocket.Conn) {
 	s.targetWriteMu.Lock()
 	defer s.targetWriteMu.Unlock()
@@ -779,12 +834,19 @@ func buildResponsesWSErrorPayload(eventID string, apiErr *types.NewAPIError) ([]
 func (s *responsesWSSession) closeTarget() {
 	var target *websocket.Conn
 	var unregister func()
+	var httpCancel context.CancelFunc
 	s.targetWriteMu.Lock()
 	target = s.target
 	s.target = nil
 	unregister = s.unregister
 	s.unregister = nil
+	httpCancel = s.httpCancel
+	s.httpCancel = nil
+	s.httpBridge = false
 	s.targetWriteMu.Unlock()
+	if httpCancel != nil {
+		httpCancel()
+	}
 	if unregister != nil {
 		unregister()
 	}
@@ -793,8 +855,35 @@ func (s *responsesWSSession) closeTarget() {
 	}
 }
 
-func (s *responsesWSSession) registerChannelClose(channelID int) {
-	unregister := wsmanager.Register(channelID, wsmanager.KindResponses, func(reason string) {
+func (s *responsesWSSession) shutdown() {
+	s.httpLifecycleMu.Lock()
+	defer s.httpLifecycleMu.Unlock()
+	s.closeTarget()
+	_ = s.client.Close()
+	s.httpWG.Wait()
+	s.failCurrent()
+}
+
+func (s *responsesWSSession) resetUpstreamForModel(modelName string) {
+	if s.lockedModel == "" || s.lockedModel == modelName {
+		return
+	}
+	logger.LogInfo(s.c, fmt.Sprintf("responses websocket switching upstream model from %s to %s", s.lockedModel, modelName))
+	s.closeTarget()
+	s.clearResponsesHTTPBridgeContext()
+	s.lockedModel = ""
+	s.lockedChannel = nil
+}
+
+func (s *responsesWSSession) registerChannelClose(channelID int, modelName string, transport string) {
+	unregister := wsmanager.RegisterWithInfo(channelID, wsmanager.KindResponses, wsmanager.ConnectionInfo{
+		UserID:      common.GetContextKeyInt(s.c, appconstant.ContextKeyUserId),
+		Username:    common.GetContextKeyString(s.c, appconstant.ContextKeyUserName),
+		TokenName:   s.c.GetString("token_name"),
+		Model:       modelName,
+		Transport:   transport,
+		ConnectedAt: s.connectedAt.Unix(),
+	}, func(reason string) {
 		s.closeForPolicy(reason)
 	})
 	s.targetWriteMu.Lock()
@@ -807,15 +896,18 @@ func (s *responsesWSSession) registerChannelClose(channelID int) {
 
 func (s *responsesWSSession) closeForPolicy(reason string) {
 	s.closeOnce.Do(func() {
-		s.failCurrent()
 		deadline := time.Now().Add(time.Second)
 		closeMessage := websocket.FormatCloseMessage(websocket.ClosePolicyViolation, reason)
 		_ = s.client.WriteControl(websocket.CloseMessage, closeMessage, deadline)
 		if target := s.getTarget(); target != nil {
 			_ = target.WriteControl(websocket.CloseMessage, closeMessage, deadline)
 		}
+		s.httpLifecycleMu.Lock()
 		s.closeTarget()
 		_ = s.client.Close()
+		s.httpWG.Wait()
+		s.failCurrent()
+		s.httpLifecycleMu.Unlock()
 	})
 }
 
@@ -868,14 +960,16 @@ func selectResponsesWSChannel(c *gin.Context, modelName string, retryParam *serv
 
 	if retryParam.GetRetry() == 0 {
 		if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelName, usingGroup); found {
+			affinityUsable := false
 			preferred, err := appmodel.CacheGetChannel(preferredChannelID)
-			if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled {
+			if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled && responsesWSChannelSupportsRequest(preferred, c.Request.URL.Path, modelName) {
 				if usingGroup == "auto" {
 					userGroup := common.GetContextKeyString(c, appconstant.ContextKeyUserGroup)
 					for _, g := range service.GetUserAutoGroup(userGroup) {
 						if appmodel.IsChannelEnabledForGroupModel(g, modelName, preferred.Id) {
 							common.SetContextKey(c, appconstant.ContextKeyAutoGroup, g)
 							service.MarkChannelAffinityUsed(c, g, preferred.Id)
+							affinityUsable = true
 							if err := middleware.SetupContextForSelectedChannel(c, preferred, modelName); err != nil {
 								return nil, err
 							}
@@ -884,11 +978,15 @@ func selectResponsesWSChannel(c *gin.Context, modelName string, retryParam *serv
 					}
 				} else if appmodel.IsChannelEnabledForGroupModel(usingGroup, modelName, preferred.Id) {
 					service.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
+					affinityUsable = true
 					if err := middleware.SetupContextForSelectedChannel(c, preferred, modelName); err != nil {
 						return nil, err
 					}
 					return preferred, nil
 				}
+			}
+			if !affinityUsable && !service.ShouldKeepChannelAffinityOnChannelDisabled() {
+				service.ClearCurrentChannelAffinityCache(c)
 			}
 		}
 	}
@@ -904,6 +1002,17 @@ func selectResponsesWSChannel(c *gin.Context, modelName string, retryParam *serv
 		return nil, err
 	}
 	return channel, nil
+}
+
+func responsesWSChannelSupportsRequest(channel *appmodel.Channel, requestPath string, modelName string) bool {
+	if channel == nil {
+		return false
+	}
+	if channel.Type != appconstant.ChannelTypeAdvancedCustom {
+		return true
+	}
+	config := channel.GetOtherSettings().AdvancedCustom
+	return config != nil && config.SupportsPathForModel(requestPath, modelName)
 }
 
 func addResponsesWSUsedChannel(c *gin.Context, channelId int) {

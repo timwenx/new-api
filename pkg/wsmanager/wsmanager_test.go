@@ -106,3 +106,53 @@ func TestPublishCloseChannelsNoopsWhenRedisDisabled(t *testing.T) {
 
 	require.NoError(t, PublishCloseChannels(context.Background(), []int{10}, "test"), "publishing should no-op without Redis")
 }
+
+func TestGetConnectionStatsReturnsActiveUsersAndConnections(t *testing.T) {
+	resetRegistryForTest()
+	oldNodeName := common.NodeName
+	common.NodeName = "test-node"
+	defer func() {
+		common.NodeName = oldNodeName
+	}()
+
+	unregister := RegisterWithInfo(20, KindResponses, ConnectionInfo{
+		UserID:      1,
+		Username:    "alice",
+		TokenName:   "codex",
+		Model:       "gpt-5.6-sol",
+		Transport:   "ws",
+		ConnectedAt: 200,
+	}, func(string) {})
+	defer unregister()
+	unregisterSecond := RegisterWithInfo(10, KindResponses, ConnectionInfo{
+		UserID:      1,
+		Username:    "alice",
+		TokenName:   "codex",
+		Model:       "gpt-5.5",
+		ConnectedAt: 100,
+	}, func(string) {})
+	defer unregisterSecond()
+	unregisterThird := RegisterWithInfo(30, KindRealtime, ConnectionInfo{
+		UserID:      2,
+		Username:    "bob",
+		TokenName:   "voice",
+		Model:       "gpt-realtime",
+		ConnectedAt: 150,
+	}, func(string) {})
+	defer unregisterThird()
+
+	stats := GetConnectionStats()
+	require.Len(t, stats.Connections, 3)
+	assert.Equal(t, 3, stats.TotalConnections)
+	assert.Equal(t, 2, stats.TotalUsers)
+	assert.Equal(t, int64(100), stats.Connections[0].ConnectedAt)
+	assert.Equal(t, "test-node", stats.Connections[0].NodeName)
+	assert.Equal(t, KindResponses, stats.Connections[0].Kind)
+	assert.Equal(t, "", stats.Connections[0].Transport)
+	assert.Equal(t, 10, stats.Connections[0].ChannelID)
+	assert.NotZero(t, stats.Connections[0].ConnectionID)
+	assert.Equal(t, "ws", stats.Connections[2].Transport)
+
+	unregister()
+	assert.Equal(t, 2, GetConnectionStats().TotalConnections)
+}
