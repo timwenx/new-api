@@ -9,6 +9,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestChannelOtherSettingsSupportsResponsesWebSocket(t *testing.T) {
+	enabled := true
+	disabled := false
+
+	assert.True(t, (&ChannelOtherSettings{}).SupportsResponsesWebSocket(constant.ChannelTypeOpenAI))
+	assert.True(t, (&ChannelOtherSettings{}).SupportsResponsesWebSocket(constant.ChannelTypeCodex))
+	assert.False(t, (&ChannelOtherSettings{}).SupportsResponsesWebSocket(constant.ChannelTypeAnthropic))
+	assert.True(t, (&ChannelOtherSettings{ResponsesWebSocketEnabled: &enabled}).SupportsResponsesWebSocket(constant.ChannelTypeAnthropic))
+	assert.False(t, (&ChannelOtherSettings{ResponsesWebSocketEnabled: &disabled}).SupportsResponsesWebSocket(constant.ChannelTypeOpenAI))
+}
+
 func TestAdvancedCustomValidateResponsesToChatConverterPath(t *testing.T) {
 	valid := &AdvancedCustomConfig{
 		Routes: []AdvancedCustomRoute{

@@ -28,6 +28,7 @@ import {
   Spin,
   Progress,
   Descriptions,
+  Table,
   Tag,
   Popconfirm,
   RadioGroup,
@@ -623,6 +624,82 @@ export default function SettingsPerformance(props) {
                   </div>
                 </Col>
               </Row>
+
+              {/* 当前节点活跃 WebSocket 连接 */}
+              {stats.websocket_stats && (
+                <Row gutter={16} style={{ marginBottom: 16 }}>
+                  <Col span={24}>
+                    <div
+                      style={{
+                        padding: 16,
+                        background: 'var(--semi-color-fill-0)',
+                        borderRadius: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          flexWrap: 'wrap',
+                          marginBottom: 12,
+                        }}
+                      >
+                        <Text strong>{t('性能监控')} · WebSocket</Text>
+                        <Tag color='blue'>
+                          {t('总计')}: {stats.websocket_stats.total_connections}
+                        </Tag>
+                        <Tag color='green'>
+                          {t('用户')}: {stats.websocket_stats.total_users}
+                        </Tag>
+                      </div>
+                      <Table
+                        size='small'
+                        pagination={false}
+                        rowKey='connection_id'
+                        dataSource={stats.websocket_stats.connections}
+                        columns={[
+                          {
+                            title: t('用户'),
+                            render: (_, record) =>
+                              `${record.username || '-'} (#${record.user_id})`,
+                          },
+                          {
+                            title: t('令牌'),
+                            dataIndex: 'token_name',
+                            render: (value) => value || '-',
+                          },
+                          {
+                            title: t('类型'),
+                            render: (_, record) =>
+                              `${record.kind} / ${record.transport || 'ws'}`,
+                          },
+                          {
+                            title: t('模型'),
+                            dataIndex: 'model',
+                            render: (value) => value || '-',
+                          },
+                          {
+                            title: t('渠道'),
+                            dataIndex: 'channel_id',
+                            render: (value) => `#${value}`,
+                          },
+                          {
+                            title: t('创建时间'),
+                            dataIndex: 'connected_at',
+                            render: (value) =>
+                              new Date(value * 1000).toLocaleString(),
+                          },
+                          {
+                            title: t('节点名称'),
+                            dataIndex: 'node_name',
+                          },
+                        ]}
+                      />
+                    </div>
+                  </Col>
+                </Row>
+              )}
 
               {/* 缓存目录磁盘空间 */}
               {stats.disk_space_info?.total > 0 && (
