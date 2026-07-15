@@ -3838,6 +3838,12 @@
     "[最大并发数]必须大于等于0且不超过2147483647，0代表不限制。": "[Max concurrency] must be at least 0 and no greater than 2147483647. 0 means unlimited.",
     "旧的二元数组配置会继承上方全局并发限制。": "Legacy two-value array configs inherit the global concurrency limit above.",
     "用户 + 分组并发": "User + group concurrency",
-    "限制": "Limit"
+    "限制": "Limit",
+    "WebSocket 空闲超时（分钟）": "WebSocket idle timeout (minutes)",
+    "没有收到业务消息时断开；Ping/Pong 心跳不重置计时，0 表示禁用": "Disconnect when no application messages are received; Ping/Pong heartbeats do not reset the timer. 0 means disabled",
+    "WebSocket 连接已断开": "WebSocket connection disconnected",
+    "断开 WebSocket 连接失败": "Failed to disconnect WebSocket connection",
+    "确定要断开这个 WebSocket 连接吗？": "Are you sure you want to disconnect this WebSocket connection?",
+    "断开": "Disconnect"
   }
 }

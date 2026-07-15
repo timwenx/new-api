@@ -80,6 +80,11 @@ const perfSchema = z.object({
     monitor_cpu_threshold: z.coerce.number().min(0),
     monitor_memory_threshold: z.coerce.number().min(0).max(100),
     monitor_disk_threshold: z.coerce.number().min(0).max(100),
+    websocket_idle_timeout_minutes: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(2147483647),
   }),
 })
 
@@ -95,6 +100,7 @@ type FlatPerfDefaults = {
   'performance_setting.monitor_cpu_threshold': number
   'performance_setting.monitor_memory_threshold': number
   'performance_setting.monitor_disk_threshold': number
+  'performance_setting.websocket_idle_timeout_minutes': number
 }
 
 const buildFormDefaults = (defaults: FlatPerfDefaults): PerfFormInput => ({
@@ -112,6 +118,8 @@ const buildFormDefaults = (defaults: FlatPerfDefaults): PerfFormInput => ({
       defaults['performance_setting.monitor_memory_threshold'],
     monitor_disk_threshold:
       defaults['performance_setting.monitor_disk_threshold'],
+    websocket_idle_timeout_minutes:
+      defaults['performance_setting.websocket_idle_timeout_minutes'],
   },
 })
 
@@ -132,6 +140,8 @@ const normalizeFormValues = (values: PerfFormValues): FlatPerfDefaults => ({
     values.performance_setting.monitor_memory_threshold,
   'performance_setting.monitor_disk_threshold':
     values.performance_setting.monitor_disk_threshold,
+  'performance_setting.websocket_idle_timeout_minutes':
+    values.performance_setting.websocket_idle_timeout_minutes,
 })
 
 function formatBytes(bytes: number, decimals = 2): string {
@@ -149,6 +159,20 @@ function formatBytes(bytes: number, decimals = 2): string {
 
 interface Props {
   defaultValues: FlatPerfDefaults
+}
+
+type WebSocketConnection = {
+  connection_id: number
+  user_id: number
+  username: string
+  token_name: string
+  channel_id: number
+  kind: string
+  transport: string
+  model: string
+  connected_at: number
+  node_name: string
+  node_id: string
 }
 
 type PerformanceStats = {
@@ -185,18 +209,7 @@ type PerformanceStats = {
   websocket_stats?: {
     total_connections: number
     total_users: number
-    connections: Array<{
-      connection_id: number
-      user_id: number
-      username: string
-      token_name: string
-      channel_id: number
-      kind: string
-      transport: string
-      model: string
-      connected_at: number
-      node_name: string
-    }>
+    connections: Array<WebSocketConnection>
   }
   group_concurrency_stats?: {
     total_active: number
@@ -220,6 +233,9 @@ export function PerformanceSection(props: Props) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
   const [stats, setStats] = useState<PerformanceStats | null>(null)
+  const [disconnectingConnection, setDisconnectingConnection] = useState<
+    string | null
+  >(null)
 
   const formDefaults = useMemo(
     () => buildFormDefaults(props.defaultValues),
@@ -314,6 +330,29 @@ export function PerformanceSection(props: Props) {
       }
     } catch {
       toast.error(t('GC execution failed'))
+    }
+  }
+
+  const disconnectWebSocket = async (connection: WebSocketConnection) => {
+    const connectionKey = `${connection.node_id}-${connection.connection_id}`
+    setDisconnectingConnection(connectionKey)
+    try {
+      const res = await api.post('/api/performance/websocket/disconnect', {
+        connection_id: connection.connection_id,
+        node_id: connection.node_id,
+      })
+      if (res.data.success) {
+        toast.success(t('WebSocket connection disconnected'))
+        await fetchStats()
+      } else {
+        toast.error(
+          res.data.message || t('Failed to disconnect WebSocket connection')
+        )
+      }
+    } catch {
+      toast.error(t('Failed to disconnect WebSocket connection'))
+    } finally {
+      setDisconnectingConnection(null)
     }
   }
 
@@ -553,6 +592,30 @@ export function PerformanceSection(props: Props) {
                       disabled={!monitorEnabled}
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='performance_setting.websocket_idle_timeout_minutes'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('WebSocket idle timeout (minutes)')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={0}
+                      max={2147483647}
+                      step={1}
+                      {...safeNumberFieldProps(field)}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Disconnects client WebSockets with no application messages. Ping/Pong heartbeats do not reset the timer. 0 = disabled.'
+                    )}
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -819,6 +882,9 @@ export function PerformanceSection(props: Props) {
                           {t('Created At')}
                         </th>
                         <th className='px-2 py-2 font-medium'>{t('Node')}</th>
+                        <th className='px-2 py-2 font-medium'>
+                          {t('Actions')}
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -826,7 +892,7 @@ export function PerformanceSection(props: Props) {
                         <tr>
                           <td
                             className='text-muted-foreground px-2 py-4 text-center'
-                            colSpan={7}
+                            colSpan={8}
                           >
                             {t('No Data')}
                           </td>
@@ -835,7 +901,7 @@ export function PerformanceSection(props: Props) {
                         stats.websocket_stats.connections.map((connection) => (
                           <tr
                             className='border-b last:border-b-0'
-                            key={`${connection.node_name}-${connection.connection_id}`}
+                            key={`${connection.node_id}-${connection.connection_id}`}
                           >
                             <td className='px-2 py-2'>
                               {connection.username || '-'}
@@ -862,6 +928,49 @@ export function PerformanceSection(props: Props) {
                             </td>
                             <td className='px-2 py-2'>
                               {connection.node_name}
+                            </td>
+                            <td className='px-2 py-2'>
+                              <AlertDialog>
+                                <AlertDialogTrigger
+                                  render={
+                                    <Button
+                                      variant='destructive'
+                                      size='sm'
+                                      disabled={
+                                        disconnectingConnection ===
+                                        `${connection.node_id}-${connection.connection_id}`
+                                      }
+                                    />
+                                  }
+                                >
+                                  {t('Disconnect')}
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>
+                                      {t('Disconnect WebSocket connection?')}
+                                    </AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      {t(
+                                        'This immediately closes the selected connection and releases its concurrency slot.'
+                                      )}
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>
+                                      {t('Cancel')}
+                                    </AlertDialogCancel>
+                                    <AlertDialogAction
+                                      variant='destructive'
+                                      onClick={() =>
+                                        disconnectWebSocket(connection)
+                                      }
+                                    >
+                                      {t('Disconnect')}
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
                             </td>
                           </tr>
                         ))

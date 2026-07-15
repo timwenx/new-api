@@ -286,6 +286,15 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "performance_setting.websocket_idle_timeout_minutes":
+		idleTimeout, parseErr := strconv.ParseInt(strings.TrimSpace(option.Value.(string)), 10, 32)
+		if parseErr != nil || idleTimeout < 0 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "WebSocket 空闲超时必须是 0 到 2147483647 之间的整数",
+			})
+			return
+		}
 	case "AutomaticDisableStatusCodes":
 		_, err = operation_setting.ParseHTTPStatusCodeRanges(option.Value.(string))
 		if err != nil {

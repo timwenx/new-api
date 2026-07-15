@@ -123,6 +123,9 @@ const OPERATIONS_SECTIONS = [
             settings['performance_setting.monitor_memory_threshold'] ?? 90,
           'performance_setting.monitor_disk_threshold':
             settings['performance_setting.monitor_disk_threshold'] ?? 95,
+          'performance_setting.websocket_idle_timeout_minutes':
+            settings['performance_setting.websocket_idle_timeout_minutes'] ??
+            10,
         }}
       />
     ),
