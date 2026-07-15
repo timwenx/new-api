@@ -3692,6 +3692,12 @@
     "[最大并发数]必须大于等于0且不超过2147483647，0代表不限制。": "[Concurrence maximale] doit être comprise entre 0 et 2147483647. 0 signifie illimité.",
     "旧的二元数组配置会继承上方全局并发限制。": "Les anciennes configurations à deux valeurs héritent de la limite globale de concurrence ci-dessus.",
     "用户 + 分组并发": "Concurrence par utilisateur et groupe",
-    "限制": "Limite"
+    "限制": "Limite",
+    "WebSocket 空闲超时（分钟）": "Délai d’inactivité WebSocket (minutes)",
+    "没有收到业务消息时断开；Ping/Pong 心跳不重置计时，0 表示禁用": "Déconnecte en l’absence de messages applicatifs ; les battements Ping/Pong ne réinitialisent pas le délai. 0 signifie désactivé",
+    "WebSocket 连接已断开": "Connexion WebSocket déconnectée",
+    "断开 WebSocket 连接失败": "Échec de la déconnexion de la connexion WebSocket",
+    "确定要断开这个 WebSocket 连接吗？": "Voulez-vous vraiment déconnecter cette connexion WebSocket ?",
+    "断开": "Déconnecter"
   }
 }
