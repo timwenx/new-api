@@ -4226,6 +4226,12 @@
     "[最大并发数]必须大于等于0且不超过2147483647，0代表不限制。": "[Số đồng thời tối đa] phải từ 0 đến 2147483647. 0 nghĩa là không giới hạn.",
     "旧的二元数组配置会继承上方全局并发限制。": "Cấu hình mảng hai giá trị cũ kế thừa giới hạn đồng thời toàn cục ở trên.",
     "用户 + 分组并发": "Số yêu cầu đồng thời theo người dùng và nhóm",
-    "限制": "Giới hạn"
+    "限制": "Giới hạn",
+    "WebSocket 空闲超时（分钟）": "Thời gian chờ WebSocket khi không hoạt động (phút)",
+    "没有收到业务消息时断开；Ping/Pong 心跳不重置计时，0 表示禁用": "Ngắt kết nối khi không nhận được thông điệp ứng dụng; nhịp tim Ping/Pong không đặt lại bộ đếm. 0 nghĩa là tắt",
+    "WebSocket 连接已断开": "Đã ngắt kết nối WebSocket",
+    "断开 WebSocket 连接失败": "Không thể ngắt kết nối WebSocket",
+    "确定要断开这个 WebSocket 连接吗？": "Bạn có chắc muốn ngắt kết nối WebSocket này không?",
+    "断开": "Ngắt kết nối"
   }
 }

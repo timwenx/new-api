@@ -15,6 +15,8 @@ func resetRegistryForTest() {
 	defer mu.Unlock()
 	registry = map[int]map[uint64]*entry{}
 	nextID = 0
+	originOnce = sync.Once{}
+	originID = ""
 }
 
 func TestCloseChannelClosesRegisteredConnectionsOnce(t *testing.T) {
@@ -105,6 +107,42 @@ func TestPublishCloseChannelsNoopsWhenRedisDisabled(t *testing.T) {
 	}()
 
 	require.NoError(t, PublishCloseChannels(context.Background(), []int{10}, "test"), "publishing should no-op without Redis")
+	require.NoError(t, PublishCloseConnection(context.Background(), "node-id", 1, "test"), "publishing should no-op without Redis")
+}
+
+func TestCloseConnectionOnlyClosesSelectedConnection(t *testing.T) {
+	resetRegistryForTest()
+
+	closed := make(map[int]int)
+	RegisterWithInfo(10, KindResponses, ConnectionInfo{UserID: 1}, func(string) {
+		closed[1]++
+	})
+	RegisterWithInfo(20, KindRealtime, ConnectionInfo{UserID: 2}, func(string) {
+		closed[2]++
+	})
+	stats := GetConnectionStats()
+	require.Len(t, stats.Connections, 2)
+
+	selected := stats.Connections[0]
+	require.Equal(t, 1, CloseConnection(selected.NodeID, selected.ConnectionID, "administrator"))
+	assert.Equal(t, 1, closed[selected.UserID])
+	assert.Equal(t, 0, closed[3-selected.UserID])
+	assert.Equal(t, 1, GetConnectionStats().TotalConnections)
+	require.Equal(t, 0, CloseConnection(selected.NodeID, selected.ConnectionID, "administrator"))
+}
+
+func TestCloseConnectionRejectsAnotherNode(t *testing.T) {
+	resetRegistryForTest()
+
+	closed := 0
+	RegisterWithInfo(10, KindResponses, ConnectionInfo{UserID: 1}, func(string) {
+		closed++
+	})
+	connection := GetConnectionStats().Connections[0]
+
+	require.Equal(t, 0, CloseConnection("another-node", connection.ConnectionID, "administrator"))
+	assert.Equal(t, 0, closed)
+	assert.Equal(t, 1, GetConnectionStats().TotalConnections)
 }
 
 func TestGetConnectionStatsReturnsActiveUsersAndConnections(t *testing.T) {
@@ -147,6 +185,7 @@ func TestGetConnectionStatsReturnsActiveUsersAndConnections(t *testing.T) {
 	assert.Equal(t, 2, stats.TotalUsers)
 	assert.Equal(t, int64(100), stats.Connections[0].ConnectedAt)
 	assert.Equal(t, "test-node", stats.Connections[0].NodeName)
+	assert.NotEmpty(t, stats.Connections[0].NodeID)
 	assert.Equal(t, KindResponses, stats.Connections[0].Kind)
 	assert.Equal(t, "", stats.Connections[0].Transport)
 	assert.Equal(t, 10, stats.Connections[0].ChannelID)

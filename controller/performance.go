@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/pkg/groupconcurrency"
 	"github.com/QuantumNous/new-api/pkg/wsmanager"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
 )
@@ -54,6 +55,11 @@ type GroupConcurrencyEntry struct {
 	WebSocketActive int    `json:"websocket_active"`
 	Limit           int    `json:"limit"`
 	Available       int    `json:"available"`
+}
+
+type disconnectWebSocketRequest struct {
+	ConnectionID uint64 `json:"connection_id"`
+	NodeID       string `json:"node_id"`
 }
 
 // MemoryStats 内存统计
@@ -164,6 +170,30 @@ func GetPerformanceStats(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data":    stats,
+	})
+}
+
+func DisconnectWebSocket(c *gin.Context) {
+	var request disconnectWebSocketRequest
+	if err := common.DecodeJson(c.Request.Body, &request); err != nil || request.ConnectionID == 0 || strings.TrimSpace(request.NodeID) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "无效的 WebSocket 连接标识",
+		})
+		return
+	}
+
+	closedLocal := service.CloseActiveWebSocket(
+		request.NodeID,
+		request.ConnectionID,
+		service.AdministratorDisconnectedReason,
+	)
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "WebSocket 断开请求已发送",
+		"data": gin.H{
+			"closed_local": closedLocal,
+		},
 	})
 }
 

@@ -29,9 +29,11 @@ type entry struct {
 }
 
 type closeEvent struct {
-	ChannelIDs []int  `json:"channel_ids"`
-	Reason     string `json:"reason"`
-	Origin     string `json:"origin"`
+	ChannelIDs   []int  `json:"channel_ids,omitempty"`
+	ConnectionID uint64 `json:"connection_id,omitempty"`
+	TargetNodeID string `json:"target_node_id,omitempty"`
+	Reason       string `json:"reason"`
+	Origin       string `json:"origin"`
 }
 
 type ConnectionInfo struct {
@@ -45,6 +47,7 @@ type ConnectionInfo struct {
 	Transport    string `json:"transport"`
 	ConnectedAt  int64  `json:"connected_at"`
 	NodeName     string `json:"node_name"`
+	NodeID       string `json:"node_id"`
 }
 
 type ConnectionStats struct {
@@ -83,6 +86,7 @@ func RegisterWithInfo(channelID int, kind string, info ConnectionInfo, close fun
 			info.NodeName = "node"
 		}
 	}
+	info.NodeID = getOriginID()
 	var closeOnce sync.Once
 	safeClose := func(reason string) {
 		closeOnce.Do(func() {
@@ -182,6 +186,28 @@ func CloseChannelsAndBroadcast(channelIDs []int, reason string) int {
 	return count
 }
 
+func CloseConnection(nodeID string, connectionID uint64, reason string) int {
+	if nodeID == "" || connectionID == 0 || nodeID != getOriginID() {
+		return 0
+	}
+	e := takeConnection(connectionID)
+	if e == nil {
+		return 0
+	}
+	reason = normalizeReason(reason)
+	e.close(reason)
+	common.SysLog(fmt.Sprintf("closed active websocket connection, connection_id=%d, channel_id=%d, kind=%s, reason=%s", connectionID, e.channelID, e.kind, reason))
+	return 1
+}
+
+func CloseConnectionAndBroadcast(nodeID string, connectionID uint64, reason string) int {
+	count := CloseConnection(nodeID, connectionID, reason)
+	if err := PublishCloseConnection(context.Background(), nodeID, connectionID, reason); err != nil {
+		common.SysLog(fmt.Sprintf("failed to publish websocket connection close event: %v", err))
+	}
+	return count
+}
+
 func StartSubscriber(ctx context.Context) {
 	if !common.RedisEnabled || common.RDB == nil {
 		return
@@ -213,6 +239,25 @@ func PublishCloseChannels(ctx context.Context, channelIDs []int, reason string) 
 	return common.RDB.Publish(ctx, redisChannel, payload).Err()
 }
 
+func PublishCloseConnection(ctx context.Context, nodeID string, connectionID uint64, reason string) error {
+	if !common.RedisEnabled || common.RDB == nil {
+		return nil
+	}
+	if nodeID == "" || connectionID == 0 {
+		return nil
+	}
+	payload, err := common.Marshal(closeEvent{
+		ConnectionID: connectionID,
+		TargetNodeID: nodeID,
+		Reason:       normalizeReason(reason),
+		Origin:       getOriginID(),
+	})
+	if err != nil {
+		return err
+	}
+	return common.RDB.Publish(ctx, redisChannel, payload).Err()
+}
+
 func subscribe(ctx context.Context) {
 	pubsub := common.RDB.Subscribe(ctx, redisChannel)
 	defer pubsub.Close()
@@ -234,9 +279,31 @@ func subscribe(ctx context.Context) {
 			if event.Origin == getOriginID() {
 				continue
 			}
+			if event.ConnectionID != 0 {
+				CloseConnection(event.TargetNodeID, event.ConnectionID, event.Reason)
+				continue
+			}
 			CloseChannels(event.ChannelIDs, event.Reason)
 		}
 	}
+}
+
+func takeConnection(connectionID uint64) *entry {
+	mu.Lock()
+	defer mu.Unlock()
+
+	for channelID, entries := range registry {
+		e := entries[connectionID]
+		if e == nil {
+			continue
+		}
+		delete(entries, connectionID)
+		if len(entries) == 0 {
+			delete(registry, channelID)
+		}
+		return e
+	}
+	return nil
 }
 
 func takeEntries(channelIDs []int) []*entry {

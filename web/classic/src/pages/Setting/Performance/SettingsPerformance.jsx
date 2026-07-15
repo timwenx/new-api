@@ -73,6 +73,7 @@ export default function SettingsPerformance(props) {
     'performance_setting.monitor_cpu_threshold': 90,
     'performance_setting.monitor_memory_threshold': 90,
     'performance_setting.monitor_disk_threshold': 95,
+    'performance_setting.websocket_idle_timeout_minutes': 10,
   });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
@@ -80,6 +81,7 @@ export default function SettingsPerformance(props) {
   const [logCleanupMode, setLogCleanupMode] = useState('by_count');
   const [logCleanupValue, setLogCleanupValue] = useState(10);
   const [logCleanupLoading, setLogCleanupLoading] = useState(false);
+  const [disconnectingConnection, setDisconnectingConnection] = useState(null);
 
   function handleFieldChange(fieldName) {
     return (value) => {
@@ -172,6 +174,27 @@ export default function SettingsPerformance(props) {
       }
     } catch (error) {
       showError(t('GC 执行失败'));
+    }
+  }
+
+  async function disconnectWebSocket(connection) {
+    const connectionKey = `${connection.node_id}-${connection.connection_id}`;
+    setDisconnectingConnection(connectionKey);
+    try {
+      const res = await API.post('/api/performance/websocket/disconnect', {
+        connection_id: connection.connection_id,
+        node_id: connection.node_id,
+      });
+      if (res.data.success) {
+        showSuccess(t('WebSocket 连接已断开'));
+        await fetchStats();
+      } else {
+        showError(res.data.message || t('断开 WebSocket 连接失败'));
+      }
+    } catch (error) {
+      showError(t('断开 WebSocket 连接失败'));
+    } finally {
+      setDisconnectingConnection(null);
     }
   }
 
@@ -387,6 +410,20 @@ export default function SettingsPerformance(props) {
                     'performance_setting.monitor_disk_threshold',
                   )}
                   disabled={!inputs['performance_setting.monitor_enabled']}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={6} lg={6} xl={6}>
+                <Form.InputNumber
+                  field={'performance_setting.websocket_idle_timeout_minutes'}
+                  label={t('WebSocket 空闲超时（分钟）')}
+                  extraText={t(
+                    '没有收到业务消息时断开；Ping/Pong 心跳不重置计时，0 表示禁用',
+                  )}
+                  min={0}
+                  max={2147483647}
+                  onChange={handleFieldChange(
+                    'performance_setting.websocket_idle_timeout_minutes',
+                  )}
                 />
               </Col>
             </Row>
@@ -741,7 +778,9 @@ export default function SettingsPerformance(props) {
                       <Table
                         size='small'
                         pagination={false}
-                        rowKey='connection_id'
+                        rowKey={(record) =>
+                          `${record.node_id}-${record.connection_id}`
+                        }
                         dataSource={stats.websocket_stats.connections}
                         columns={[
                           {
@@ -778,6 +817,28 @@ export default function SettingsPerformance(props) {
                           {
                             title: t('节点名称'),
                             dataIndex: 'node_name',
+                          },
+                          {
+                            title: t('操作'),
+                            render: (_, record) => {
+                              const connectionKey = `${record.node_id}-${record.connection_id}`;
+                              return (
+                                <Popconfirm
+                                  title={t('确定要断开这个 WebSocket 连接吗？')}
+                                  onConfirm={() => disconnectWebSocket(record)}
+                                >
+                                  <Button
+                                    type='danger'
+                                    size='small'
+                                    loading={
+                                      disconnectingConnection === connectionKey
+                                    }
+                                  >
+                                    {t('断开')}
+                                  </Button>
+                                </Popconfirm>
+                              );
+                            },
                           },
                         ]}
                       />
