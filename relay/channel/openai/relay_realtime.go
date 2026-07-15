@@ -2,6 +2,7 @@ package openai
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
@@ -24,6 +25,9 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 	info.IsStream = true
 	clientConn := info.ClientWs
 	targetConn := info.TargetWs
+	if err := relaycommon.RefreshClientWebSocketReadDeadline(clientConn); err != nil {
+		return types.NewError(err, types.ErrorCodeBadResponse), nil
+	}
 
 	clientClosed := make(chan struct{})
 	targetClosed := make(chan struct{})
@@ -48,10 +52,25 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 			default:
 				_, message, err := clientConn.ReadMessage()
 				if err != nil {
+					if relaycommon.IsWebSocketIdleTimeout(err) {
+						logger.LogInfo(c, "realtime websocket closed after idle timeout")
+						deadline := time.Now().Add(time.Second)
+						closeMessage := websocket.FormatCloseMessage(websocket.CloseGoingAway, relaycommon.WebSocketIdleCloseReason)
+						_ = clientConn.WriteControl(websocket.CloseMessage, closeMessage, deadline)
+						_ = targetConn.WriteControl(websocket.CloseMessage, closeMessage, deadline)
+						_ = clientConn.Close()
+						_ = targetConn.Close()
+						close(clientClosed)
+						return
+					}
 					if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 						errChan <- fmt.Errorf("error reading from client: %v", err)
 					}
 					close(clientClosed)
+					return
+				}
+				if err := relaycommon.RefreshClientWebSocketReadDeadline(clientConn); err != nil {
+					errChan <- fmt.Errorf("error refreshing client websocket idle timeout: %v", err)
 					return
 				}
 

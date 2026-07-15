@@ -24,6 +24,8 @@ type PerformanceSetting struct {
 	MonitorMemoryThreshold int `json:"monitor_memory_threshold"`
 	// MonitorDiskThreshold 磁盘使用率阈值（%）
 	MonitorDiskThreshold int `json:"monitor_disk_threshold"`
+	// WebSocketIdleTimeoutMinutes 客户端 WS 无业务消息后的断开时间，0 表示禁用
+	WebSocketIdleTimeoutMinutes int `json:"websocket_idle_timeout_minutes"`
 }
 
 // 默认配置
@@ -33,10 +35,11 @@ var performanceSetting = PerformanceSetting{
 	DiskCacheMaxSizeMB:   1024, // 最大 1GB 磁盘缓存
 	DiskCachePath:        "",   // 空表示使用系统临时目录
 
-	MonitorEnabled:         true,
-	MonitorCPUThreshold:    90,
-	MonitorMemoryThreshold: 90,
-	MonitorDiskThreshold:   95,
+	MonitorEnabled:              true,
+	MonitorCPUThreshold:         90,
+	MonitorMemoryThreshold:      90,
+	MonitorDiskThreshold:        95,
+	WebSocketIdleTimeoutMinutes: 10,
 }
 
 func init() {
@@ -56,10 +59,11 @@ func syncToCommon() {
 	})
 
 	common.SetPerformanceMonitorConfig(common.PerformanceMonitorConfig{
-		Enabled:         performanceSetting.MonitorEnabled,
-		CPUThreshold:    performanceSetting.MonitorCPUThreshold,
-		MemoryThreshold: performanceSetting.MonitorMemoryThreshold,
-		DiskThreshold:   performanceSetting.MonitorDiskThreshold,
+		Enabled:                     performanceSetting.MonitorEnabled,
+		CPUThreshold:                performanceSetting.MonitorCPUThreshold,
+		MemoryThreshold:             performanceSetting.MonitorMemoryThreshold,
+		DiskThreshold:               performanceSetting.MonitorDiskThreshold,
+		WebSocketIdleTimeoutMinutes: performanceSetting.WebSocketIdleTimeoutMinutes,
 	})
 }
 

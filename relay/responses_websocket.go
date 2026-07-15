@@ -82,20 +82,35 @@ type responsesWSSession struct {
 }
 
 func ResponsesWebSocketHelper(c *gin.Context, client *websocket.Conn) *types.NewAPIError {
+	return responsesWebSocketHelper(c, client, relaycommon.RefreshClientWebSocketReadDeadline)
+}
+
+func responsesWebSocketHelper(c *gin.Context, client *websocket.Conn, refreshReadDeadline func(*websocket.Conn) error) *types.NewAPIError {
 	session := &responsesWSSession{
 		c:           c,
 		client:      client,
 		connectedAt: time.Now(),
 	}
 	defer session.shutdown()
+	if err := refreshReadDeadline(client); err != nil {
+		return types.NewError(err, types.ErrorCodeBadResponse, types.ErrOptionWithSkipRetry())
+	}
 
 	for {
 		messageType, message, err := client.ReadMessage()
 		if err != nil {
+			if relaycommon.IsWebSocketIdleTimeout(err) {
+				logger.LogInfo(c, "responses websocket closed after idle timeout")
+				session.closeForIdleTimeout()
+				return nil
+			}
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 				return nil
 			}
 			return types.NewError(err, types.ErrorCodeBadRequestBody, types.ErrOptionWithSkipRetry())
+		}
+		if err := refreshReadDeadline(client); err != nil {
+			return types.NewError(err, types.ErrorCodeBadResponse, types.ErrOptionWithSkipRetry())
 		}
 
 		eventType, eventErr := responsesWSEventType(message)
@@ -895,9 +910,17 @@ func (s *responsesWSSession) registerChannelClose(channelID int, modelName strin
 }
 
 func (s *responsesWSSession) closeForPolicy(reason string) {
+	s.closeWithCode(websocket.ClosePolicyViolation, reason)
+}
+
+func (s *responsesWSSession) closeForIdleTimeout() {
+	s.closeWithCode(websocket.CloseGoingAway, relaycommon.WebSocketIdleCloseReason)
+}
+
+func (s *responsesWSSession) closeWithCode(code int, reason string) {
 	s.closeOnce.Do(func() {
 		deadline := time.Now().Add(time.Second)
-		closeMessage := websocket.FormatCloseMessage(websocket.ClosePolicyViolation, reason)
+		closeMessage := websocket.FormatCloseMessage(code, reason)
 		_ = s.client.WriteControl(websocket.CloseMessage, closeMessage, deadline)
 		if target := s.getTarget(); target != nil {
 			_ = target.WriteControl(websocket.CloseMessage, closeMessage, deadline)
