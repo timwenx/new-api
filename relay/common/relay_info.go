@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -160,6 +161,9 @@ type RelayInfo struct {
 	// http.Request.ContentLength manually (net/http only auto-detects it for
 	// *bytes.Reader/Buffer/strings.Reader). 0 means "let net/http decide".
 	UpstreamRequestBodySize int64
+	// UpstreamFastMode records whether the final outbound request uses a fast
+	// service tier. It is written to the consume log after the upstream call.
+	UpstreamFastMode bool
 
 	PriceData types.PriceData
 
@@ -638,6 +642,47 @@ func (info *RelayInfo) GetFinalRequestRelayFormat() types.RelayFormat {
 		return info.RequestConversionChain[n-1]
 	}
 	return info.RelayFormat
+}
+
+// SetUpstreamFastModeFromRequestBody records whether the final outbound JSON
+// payload explicitly enables a fast service tier.
+func (info *RelayInfo) SetUpstreamFastModeFromRequestBody(requestBody []byte) {
+	if info == nil {
+		return
+	}
+	serviceTier := gjson.GetBytes(requestBody, "service_tier").String()
+	info.UpstreamFastMode = isFastServiceTier(serviceTier)
+}
+
+// SetUpstreamFastModeFromRequestReader is the passthrough equivalent of
+// SetUpstreamFastModeFromRequestBody. It restores the reader before returning
+// so the outbound request remains unchanged.
+func (info *RelayInfo) SetUpstreamFastModeFromRequestReader(requestBody io.ReadSeeker) {
+	if info == nil {
+		return
+	}
+	info.UpstreamFastMode = false
+	if requestBody == nil {
+		return
+	}
+	if _, err := requestBody.Seek(0, io.SeekStart); err != nil {
+		return
+	}
+	defer func() {
+		_, _ = requestBody.Seek(0, io.SeekStart)
+	}()
+
+	var request struct {
+		ServiceTier string `json:"service_tier"`
+	}
+	if err := common.DecodeJson(requestBody, &request); err != nil {
+		return
+	}
+	info.UpstreamFastMode = isFastServiceTier(request.ServiceTier)
+}
+
+func isFastServiceTier(serviceTier string) bool {
+	return serviceTier == "priority" || serviceTier == "fast"
 }
 
 func GenRelayInfoResponsesCompaction(c *gin.Context, request *dto.OpenAIResponsesCompactionRequest) *RelayInfo {

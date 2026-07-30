@@ -532,6 +532,7 @@ func buildResponsesWSCreatePayload(c *gin.Context, relayInfo *relaycommon.RelayI
 			return nil, newAPIErrorFromParamOverride(err)
 		}
 	}
+	relayInfo.SetUpstreamFastModeFromRequestBody(jsonData)
 
 	event, err := buildResponsesWSCreateEvent(jsonData, generate)
 	if err != nil {

@@ -649,6 +649,31 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
       meta: { label: t('Stream') },
     },
     {
+      id: 'fast_mode',
+      header: t('Mode'),
+      accessorFn: (row) => parseLogOther(row.other)?.fast_mode,
+      cell: ({ row }) => {
+        const log = row.original
+        if (!isDisplayableLogType(log.type)) return null
+
+        const fastMode = parseLogOther(log.other)?.fast_mode
+        if (typeof fastMode !== 'boolean') {
+          return <span className='text-muted-foreground/50 text-xs'>-</span>
+        }
+
+        return (
+          <StatusBadge
+            label={fastMode ? t('Fast') : t('Normal')}
+            variant={fastMode ? 'amber' : 'neutral'}
+            size='sm'
+            copyable={false}
+            className='-ml-1.5'
+          />
+        )
+      },
+      size: 88,
+    },
+    {
       accessorKey: 'prompt_tokens',
       header: 'Tokens',
       cell: ({ row }) => {

@@ -355,6 +355,11 @@ function CommonLogsCard<TData>({
         ) : (
           <SummaryField cell={cells.get('use_time')} />
         )}
+        <SummaryField
+          label={t('Mode')}
+          cell={cells.get('fast_mode')}
+          className='col-span-2'
+        />
         {rowData ? (
           <MobileTokensField log={rowData} />
         ) : (
