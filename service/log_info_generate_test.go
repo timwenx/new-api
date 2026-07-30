@@ -18,12 +18,13 @@ func TestGenerateTextOtherInfoMarksWebSocketTransport(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
-		name      string
-		clientWs  *websocket.Conn
-		wantWSKey bool
+		name             string
+		clientWs         *websocket.Conn
+		wantWSKey        bool
+		upstreamFastMode bool
 	}{
-		{name: "http", wantWSKey: false},
-		{name: "websocket", clientWs: &websocket.Conn{}, wantWSKey: true},
+		{name: "http", wantWSKey: false, upstreamFastMode: false},
+		{name: "websocket", clientWs: &websocket.Conn{}, wantWSKey: true, upstreamFastMode: true},
 	}
 
 	for _, tt := range tests {
@@ -35,12 +36,14 @@ func TestGenerateTextOtherInfoMarksWebSocketTransport(t *testing.T) {
 				StartTime:         startTime,
 				FirstResponseTime: startTime.Add(1500 * time.Millisecond),
 				ClientWs:          tt.clientWs,
+				UpstreamFastMode:  tt.upstreamFastMode,
 				ChannelMeta:       &relaycommon.ChannelMeta{},
 			}
 
 			other := GenerateTextOtherInfo(ctx, relayInfo, 1, 1, 1, 0, 0, 0, -1)
 
 			assert.Equal(t, float64(1500), other["frt"])
+			assert.Equal(t, tt.upstreamFastMode, other["fast_mode"])
 			ws, exists := other["ws"]
 			assert.Equal(t, tt.wantWSKey, exists)
 			if tt.wantWSKey {
