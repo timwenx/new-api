@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { GlobalIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import type { Row } from '@tanstack/react-table'
 import {
   Pencil,
@@ -58,6 +60,7 @@ import {
 import { getUserActionMessage } from '../lib'
 import type { User, ManageUserAction } from '../types'
 import { UserBindingDialog } from './dialogs/user-binding-dialog'
+import { UserIPUsageDialog } from './dialogs/user-ip-usage-dialog'
 import { useUsers } from './users-provider'
 
 interface DataTableRowActionsProps {
@@ -72,6 +75,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const [resetTwoFAOpen, setResetTwoFAOpen] = useState(false)
   const [bindingDialogOpen, setBindingDialogOpen] = useState(false)
   const [subscriptionsDialogOpen, setSubscriptionsDialogOpen] = useState(false)
+  const [ipUsageDialogOpen, setIPUsageDialogOpen] = useState(false)
 
   const handleEdit = () => {
     setCurrentRow(user)
@@ -155,6 +159,22 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
           <Pencil />
         </TooltipTrigger>
         <TooltipContent>{t('Edit')}</TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              variant='ghost'
+              size='icon-sm'
+              onClick={() => setIPUsageDialogOpen(true)}
+              aria-label={t('IP Usage Details')}
+            />
+          }
+        >
+          <HugeiconsIcon icon={GlobalIcon} strokeWidth={2} />
+        </TooltipTrigger>
+        <TooltipContent>{t('IP Usage Details')}</TooltipContent>
       </Tooltip>
 
       <DataTableRowActionMenu
@@ -300,6 +320,12 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         onOpenChange={setSubscriptionsDialogOpen}
         user={{ id: user.id, username: user.username }}
         onSuccess={triggerRefresh}
+      />
+
+      <UserIPUsageDialog
+        open={ipUsageDialogOpen}
+        onOpenChange={setIPUsageDialogOpen}
+        user={{ id: user.id, username: user.username }}
       />
     </div>
   )

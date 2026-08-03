@@ -73,3 +73,45 @@ func TestRequestLogsRecordIPByDefault(t *testing.T) {
 		})
 	}
 }
+
+func TestGetUserIPUsage(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, LOG_DB.Exec("DELETE FROM logs").Error)
+
+	logs := []Log{
+		{UserId: 101, Type: LogTypeConsume, Ip: "203.0.113.10", CreatedAt: 100, PromptTokens: 10, CompletionTokens: 5, Quota: 100},
+		{UserId: 101, Type: LogTypeError, Ip: "203.0.113.10", CreatedAt: 110},
+		{UserId: 101, Type: LogTypeConsume, Ip: "203.0.113.10", CreatedAt: 120, PromptTokens: 20, CompletionTokens: 10, Quota: 200},
+		{UserId: 101, Type: LogTypeConsume, Ip: "198.51.100.20", CreatedAt: 130, PromptTokens: 7, CompletionTokens: 3, Quota: 50},
+		{UserId: 202, Type: LogTypeConsume, Ip: "198.51.100.20", CreatedAt: 140, PromptTokens: 999, CompletionTokens: 999, Quota: 999},
+		{UserId: 101, Type: LogTypeConsume, Ip: "", CreatedAt: 150, PromptTokens: 500, CompletionTokens: 500, Quota: 500},
+		{UserId: 101, Type: LogTypeLogin, Ip: "192.0.2.30", CreatedAt: 160},
+	}
+	require.NoError(t, LOG_DB.Create(&logs).Error)
+
+	firstPage, total, err := GetUserIPUsage(101, 0, 1)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
+	require.Len(t, firstPage, 1)
+	assert.Equal(t, UserIPUsage{
+		IP:               "198.51.100.20",
+		RequestCount:     1,
+		PromptTokens:     7,
+		CompletionTokens: 3,
+		Quota:            50,
+		LastUsedAt:       130,
+	}, firstPage[0])
+
+	secondPage, total, err := GetUserIPUsage(101, 1, 10)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
+	require.Len(t, secondPage, 1)
+	assert.Equal(t, UserIPUsage{
+		IP:               "203.0.113.10",
+		RequestCount:     3,
+		PromptTokens:     30,
+		CompletionTokens: 15,
+		Quota:            300,
+		LastUsedAt:       120,
+	}, secondPage[0])
+}
