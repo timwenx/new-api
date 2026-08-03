@@ -674,6 +674,25 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
       size: 88,
     },
     {
+      accessorKey: 'ip',
+      header: t('IP'),
+      cell: ({ row }) => {
+        const log = row.original
+        if (!isTimingLogType(log.type) || !log.ip) return null
+
+        return (
+          <StatusBadge
+            label={log.ip}
+            variant='orange'
+            size='sm'
+            className='max-w-[160px]'
+          />
+        )
+      },
+      meta: { label: t('IP') },
+      size: 150,
+    },
+    {
       accessorKey: 'prompt_tokens',
       header: 'Tokens',
       cell: ({ row }) => {

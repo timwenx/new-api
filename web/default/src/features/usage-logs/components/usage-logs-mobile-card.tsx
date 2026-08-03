@@ -360,6 +360,7 @@ function CommonLogsCard<TData>({
           cell={cells.get('fast_mode')}
           className='col-span-2'
         />
+        <SummaryField cell={cells.get('ip')} className='col-span-2' />
         {rowData ? (
           <MobileTokensField log={rowData} />
         ) : (

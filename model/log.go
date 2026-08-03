@@ -286,12 +286,10 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	otherStr := common.MapToJsonStr(other)
-	// 判断是否需要记录 IP
-	needRecordIp := false
+	// 未设置时默认记录 IP；用户显式关闭时才不记录。
+	needRecordIp := true
 	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		if settingMap.RecordIpLog {
-			needRecordIp = true
-		}
+		needRecordIp = settingMap.ShouldRecordIpLog()
 	}
 	log := &Log{
 		UserId:           userId,
@@ -350,12 +348,10 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	createdAt := common.GetTimestamp()
 	otherStr := common.MapToJsonStr(params.Other)
-	// 判断是否需要记录 IP
-	needRecordIp := false
+	// 未设置时默认记录 IP；用户显式关闭时才不记录。
+	needRecordIp := true
 	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		if settingMap.RecordIpLog {
-			needRecordIp = true
-		}
+		needRecordIp = settingMap.ShouldRecordIpLog()
 	}
 	log := &Log{
 		UserId:           userId,
