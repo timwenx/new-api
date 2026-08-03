@@ -28,6 +28,8 @@ import type {
   ManageUserAction,
   ManageUserQuotaPayload,
   ApiResponse,
+  GetUserIPUsageParams,
+  GetUserIPUsageResponse,
 } from './types'
 
 // ============================================================================
@@ -75,6 +77,24 @@ export async function searchUsers(
  */
 export async function getUser(id: number): Promise<ApiResponse<User>> {
   const res = await api.get(`/api/user/${id}`)
+  return res.data
+}
+
+/**
+ * Get a user's request IP usage summary (admin)
+ */
+export async function getUserIPUsage(
+  userId: number,
+  params: GetUserIPUsageParams = {}
+): Promise<GetUserIPUsageResponse> {
+  const { p = 1, page_size = 20 } = params
+  const queryParams = new URLSearchParams({
+    p: String(p),
+    page_size: String(page_size),
+  })
+  const res = await api.get(
+    `/api/user/${userId}/ip-usage?${queryParams.toString()}`
+  )
   return res.data
 }
 

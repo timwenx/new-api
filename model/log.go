@@ -80,6 +80,15 @@ type Log struct {
 	Other             string `json:"other"`
 }
 
+type UserIPUsage struct {
+	IP               string `json:"ip"`
+	RequestCount     int64  `json:"request_count"`
+	PromptTokens     int64  `json:"prompt_tokens"`
+	CompletionTokens int64  `json:"completion_tokens"`
+	Quota            int64  `json:"quota"`
+	LastUsedAt       int64  `json:"last_used_at"`
+}
+
 // don't use iota, avoid change log type value
 const (
 	LogTypeUnknown = 0
@@ -603,6 +612,33 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 
 	formatUserLogs(logs, startIdx)
 	return logs, total, err
+}
+
+func GetUserIPUsage(userId int, startIdx int, num int) (usage []UserIPUsage, total int64, err error) {
+	query := LOG_DB.Model(&Log{}).
+		Where("user_id = ? AND ip <> ? AND type IN ?", userId, "", []int{LogTypeConsume, LogTypeError})
+
+	if err = query.Distinct("ip").Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	err = query.
+		Select(`ip,
+			COUNT(*) AS request_count,
+			COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
+			COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
+			COALESCE(SUM(quota), 0) AS quota,
+			MAX(created_at) AS last_used_at`).
+		Group("ip").
+		Order("last_used_at DESC, ip ASC").
+		Limit(num).
+		Offset(startIdx).
+		Scan(&usage).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return usage, total, nil
 }
 
 type Stat struct {

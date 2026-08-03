@@ -94,6 +94,31 @@ export interface GetUsersResponse {
   }
 }
 
+export interface UserIPUsage {
+  ip: string
+  request_count: number
+  prompt_tokens: number
+  completion_tokens: number
+  quota: number
+  last_used_at: number
+}
+
+export interface GetUserIPUsageParams {
+  p?: number
+  page_size?: number
+}
+
+export interface GetUserIPUsageResponse {
+  success: boolean
+  message?: string
+  data?: {
+    items: UserIPUsage[]
+    total: number
+    page: number
+    page_size: number
+  }
+}
+
 export interface SearchUsersParams {
   keyword?: string
   group?: string
