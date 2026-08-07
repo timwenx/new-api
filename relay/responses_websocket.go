@@ -971,6 +971,9 @@ func selectResponsesWSChannel(c *gin.Context, modelName string, retryParam *serv
 		if channel.Status != common.ChannelStatusEnabled {
 			return nil, types.NewErrorWithStatusCode(errors.New("specified channel is disabled"), types.ErrorCodeGetChannelFailed, http.StatusForbidden, types.ErrOptionWithSkipRetry())
 		}
+		if !channel.SupportsRequestPath(c.Request.URL.Path, modelName) {
+			return nil, types.NewErrorWithStatusCode(errors.New("specified channel does not support this request protocol"), types.ErrorCodeGetChannelFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
 		if err := middleware.SetupContextForSelectedChannel(c, channel, modelName); err != nil {
 			return nil, err
 		}
@@ -1029,14 +1032,7 @@ func selectResponsesWSChannel(c *gin.Context, modelName string, retryParam *serv
 }
 
 func responsesWSChannelSupportsRequest(channel *appmodel.Channel, requestPath string, modelName string) bool {
-	if channel == nil {
-		return false
-	}
-	if channel.Type != appconstant.ChannelTypeAdvancedCustom {
-		return true
-	}
-	config := channel.GetOtherSettings().AdvancedCustom
-	return config != nil && config.SupportsPathForModel(requestPath, modelName)
+	return channel != nil && channel.SupportsRequestPath(requestPath, modelName)
 }
 
 func addResponsesWSUsedChannel(c *gin.Context, channelId int) {

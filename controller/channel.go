@@ -512,6 +512,9 @@ func validateTwoFactorAuth(twoFA *model.TwoFA, code string) bool {
 
 // validateChannel 通用的渠道校验函数
 func validateChannel(channel *model.Channel, isAdd bool) error {
+	if err := channel.ValidateSupportedEndpoints(); err != nil {
+		return fmt.Errorf("渠道支持协议配置错误：%s", err.Error())
+	}
 	// 校验 channel settings
 	if err := channel.ValidateSettings(); err != nil {
 		return fmt.Errorf("渠道额外设置[channel setting] 格式错误：%s", err.Error())
@@ -1127,6 +1130,9 @@ func UpdateChannel(c *gin.Context) {
 	}
 	if channel.Group != originChannel.Group {
 		changedFields = append(changedFields, "group")
+	}
+	if !equalStringPtr(channel.SupportedEndpoints, originChannel.SupportedEndpoints) {
+		changedFields = append(changedFields, "supported_endpoints")
 	}
 	if channel.Type != originChannel.Type {
 		changedFields = append(changedFields, "type")

@@ -144,6 +144,7 @@ import {
   FIELD_DESCRIPTIONS,
   FIELD_PLACEHOLDERS,
   MODEL_FETCHABLE_TYPES,
+  SUPPORTED_PROTOCOL_OPTIONS,
 } from '../../constants'
 import { useChannelMutateForm } from '../../hooks/use-channel-mutate-form'
 import {
@@ -1136,6 +1137,15 @@ export function ChannelMutateDrawer({
       label: model,
     }))
   }, [allModelsList, currentModelsArray])
+
+  const supportedProtocolOptions = useMemo(
+    () =>
+      SUPPORTED_PROTOCOL_OPTIONS.map((option) => ({
+        value: option.value,
+        label: `${t(option.label)} (${option.path})`,
+      })),
+    [t]
+  )
 
   const modelMappingGuardrail = useMemo<ModelMappingGuardrail>(() => {
     if (!currentModelMapping?.trim()) {
@@ -3407,6 +3417,36 @@ export function ChannelMutateDrawer({
                                 </div>
                               )}
                             </div>
+                          </div>
+
+                          <div className='border-border/60 rounded-lg border p-4'>
+                            <FormField
+                              control={form.control}
+                              name='supported_endpoints'
+                              render={({ field }) => (
+                                <FormItem className='space-y-3'>
+                                  <div className='space-y-1'>
+                                    <FormLabel>
+                                      {t('Supported protocols')}
+                                    </FormLabel>
+                                    <FormDescription>
+                                      {t(
+                                        'Only requests using the selected protocols will use this channel. Leave empty to allow all protocols.'
+                                      )}
+                                    </FormDescription>
+                                  </div>
+                                  <FormControl>
+                                    <MultiSelect
+                                      options={supportedProtocolOptions}
+                                      selected={field.value ?? []}
+                                      onChange={field.onChange}
+                                      placeholder={t('All protocols (default)')}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
                           </div>
 
                           <div className='border-border/60 rounded-lg border p-4'>

@@ -208,10 +208,9 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 	return nil, errors.New("channel not found")
 }
 
-// filterChannelsByRequestPathAndModel restricts candidates by request path and
-// model. Only Advanced Custom (type 58) channels are path-checked: they are kept
-// only when one of their configured routes matches requestPath and model. All
-// other channel types always pass. When requestPath is empty, filtering is skipped.
+// filterChannelsByRequestPathAndModel restricts candidates by configured
+// endpoint protocols and Advanced Custom routes. When requestPath is empty,
+// filtering is skipped.
 // Caller must hold channelSyncLock (read lock). The cached slice is never mutated.
 func filterChannelsByRequestPathAndModel(channels []int, requestPath string, model string) []int {
 	if requestPath == "" || len(channels) == 0 {
@@ -225,11 +224,11 @@ func filterChannelsByRequestPathAndModel(channels []int, requestPath string, mod
 			filtered = append(filtered, channelId)
 			continue
 		}
-		if channel.Type != constant.ChannelTypeAdvancedCustom {
-			filtered = append(filtered, channelId)
-			continue
+		var advancedCustom *dto.AdvancedCustomConfig
+		if channel.Type == constant.ChannelTypeAdvancedCustom {
+			advancedCustom = channel2advancedCustomConfig[channelId]
 		}
-		if config := channel2advancedCustomConfig[channelId]; config != nil && config.SupportsPathForModel(requestPath, model) {
+		if supportsRequestPath(channel.Type, channel.GetSupportedEndpointTypes(), advancedCustom, requestPath, model) {
 			filtered = append(filtered, channelId)
 		}
 	}

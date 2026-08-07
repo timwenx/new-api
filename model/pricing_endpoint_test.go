@@ -190,6 +190,25 @@ func TestPricingNativeChannelEndpointTypesUnchanged(t *testing.T) {
 	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeAnthropic, constant.EndpointTypeOpenAI}, byModel["claude-3-5-sonnet"])
 }
 
+func TestPricingChannelSupportedEndpointsOverrideTypeInference(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+
+	supportedEndpoints := string(constant.EndpointTypeOpenAIResponse)
+	require.NoError(t, DB.Create(&Channel{
+		Id:                 204,
+		Type:               constant.ChannelTypeOpenAI,
+		Key:                "key-204",
+		Status:             common.ChannelStatusEnabled,
+		Name:               "channel-204",
+		SupportedEndpoints: &supportedEndpoints,
+	}).Error)
+	insertPricingEndpointAbility(t, 204, "responses-only-model")
+
+	byModel := pricingEndpointTypesByModel(t)
+
+	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAIResponse}, byModel["responses-only-model"])
+}
+
 func TestInitChannelCacheInvalidatesPricingCache(t *testing.T) {
 	resetPricingEndpointTestTables(t)
 

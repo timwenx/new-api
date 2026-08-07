@@ -281,6 +281,38 @@ export const DEFAULT_CHANNEL_VALUES = {
   remark: '',
 } as const
 
+export const SUPPORTED_PROTOCOL_OPTIONS = [
+  {
+    value: 'openai',
+    label: 'OpenAI Compatible',
+    path: '/v1/chat/completions',
+  },
+  {
+    value: 'openai-response',
+    label: 'OpenAI Responses',
+    path: '/v1/responses',
+  },
+  {
+    value: 'openai-response-compact',
+    label: 'OpenAI Responses Compact',
+    path: '/v1/responses/compact',
+  },
+  { value: 'anthropic', label: 'Anthropic', path: '/v1/messages' },
+  {
+    value: 'gemini',
+    label: 'Gemini Generate Content',
+    path: '/v1beta/models/{model}:generateContent',
+  },
+  { value: 'jina-rerank', label: 'Jina', path: '/v1/rerank' },
+  {
+    value: 'image-generation',
+    label: 'Image Generation',
+    path: '/v1/images/generations',
+  },
+  { value: 'embeddings', label: 'Embeddings', path: '/v1/embeddings' },
+  { value: 'openai-video', label: 'Video', path: '/v1/videos' },
+] as const
+
 // ============================================================================
 // Table Configuration
 // ============================================================================

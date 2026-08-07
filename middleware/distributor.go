@@ -53,6 +53,13 @@ func Distribute() func(c *gin.Context) {
 				abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorChannelDisabled))
 				return
 			}
+			if !channel.SupportsRequestPath(c.Request.URL.Path, modelRequest.Model) {
+				abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorChannelProtocolUnsupported, map[string]any{
+					"Channel": channel.Name,
+					"Path":    c.Request.URL.Path,
+				}))
+				return
+			}
 		} else {
 			// Select a channel for the user
 			// check token model mapping
@@ -170,17 +177,8 @@ func Distribute() func(c *gin.Context) {
 }
 
 // channelSupportsRequestPath reports whether a channel can serve the request path.
-// Only Advanced Custom (type 58) channels are path-checked; all other channel types
-// always pass. A type-58 channel is usable only when one of its routes matches.
 func channelSupportsRequestPath(channel *model.Channel, requestPath string, requestModel string) bool {
-	if channel == nil {
-		return false
-	}
-	if channel.Type != constant.ChannelTypeAdvancedCustom {
-		return true
-	}
-	config := channel.GetOtherSettings().AdvancedCustom
-	return config != nil && config.SupportsPathForModel(requestPath, requestModel)
+	return channel != nil && channel.SupportsRequestPath(requestPath, requestModel)
 }
 
 // getModelFromRequest 从请求中读取模型信息
