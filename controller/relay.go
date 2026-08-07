@@ -99,6 +99,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			return
 		}
 		defer ws.Close()
+		if err := relaycommon.SetClientWebSocketInitialReadDeadline(ws); err != nil {
+			helper.WssError(c, ws, types.NewError(err, types.ErrorCodeBadResponse, types.ErrOptionWithSkipRetry()).ToOpenAIError())
+			return
+		}
 	}
 
 	defer func() {

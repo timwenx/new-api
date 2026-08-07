@@ -25,9 +25,6 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 	info.IsStream = true
 	clientConn := info.ClientWs
 	targetConn := info.TargetWs
-	if err := relaycommon.RefreshClientWebSocketReadDeadline(clientConn); err != nil {
-		return types.NewError(err, types.ErrorCodeBadResponse), nil
-	}
 
 	clientClosed := make(chan struct{})
 	targetClosed := make(chan struct{})
@@ -45,6 +42,7 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 				errChan <- fmt.Errorf("panic in client reader: %v", r)
 			}
 		}()
+		receivedClientMessage := false
 		for {
 			select {
 			case <-c.Done():
@@ -53,9 +51,15 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 				_, message, err := clientConn.ReadMessage()
 				if err != nil {
 					if relaycommon.IsWebSocketIdleTimeout(err) {
-						logger.LogInfo(c, "realtime websocket closed after idle timeout")
+						closeReason := relaycommon.WebSocketIdleCloseReason
+						if receivedClientMessage {
+							logger.LogInfo(c, "realtime websocket closed after idle timeout")
+						} else {
+							closeReason = relaycommon.WebSocketInitialMessageCloseReason
+							logger.LogInfo(c, "realtime websocket closed after initial message timeout")
+						}
 						deadline := time.Now().Add(time.Second)
-						closeMessage := websocket.FormatCloseMessage(websocket.CloseGoingAway, relaycommon.WebSocketIdleCloseReason)
+						closeMessage := websocket.FormatCloseMessage(websocket.CloseGoingAway, closeReason)
 						_ = clientConn.WriteControl(websocket.CloseMessage, closeMessage, deadline)
 						_ = targetConn.WriteControl(websocket.CloseMessage, closeMessage, deadline)
 						_ = clientConn.Close()
@@ -69,6 +73,7 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 					close(clientClosed)
 					return
 				}
+				receivedClientMessage = true
 				if err := relaycommon.RefreshClientWebSocketReadDeadline(clientConn); err != nil {
 					errChan <- fmt.Errorf("error refreshing client websocket idle timeout: %v", err)
 					return
