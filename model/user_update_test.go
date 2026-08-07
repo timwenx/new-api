@@ -31,14 +31,15 @@ func TestUserUpdateDoesNotOverwriteAccountingFields(t *testing.T) {
 	setupUserUpdateTestState(t)
 
 	user := User{
-		Id:           1,
-		Username:     "quota-race-user",
-		Password:     "password",
-		DisplayName:  "before",
-		Status:       common.UserStatusEnabled,
-		Quota:        1000,
-		UsedQuota:    20,
-		RequestCount: 3,
+		Id:              1,
+		Username:        "quota-race-user",
+		Password:        "password",
+		DisplayName:     "before",
+		Status:          common.UserStatusEnabled,
+		Quota:           1000,
+		UsedQuota:       20,
+		RequestCount:    3,
+		DailyTokenLimit: 10_000,
 	}
 	require.NoError(t, DB.Create(&user).Error)
 
@@ -46,9 +47,10 @@ func TestUserUpdateDoesNotOverwriteAccountingFields(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
-		"quota":         gorm.Expr("quota - ?", 400),
-		"used_quota":    gorm.Expr("used_quota + ?", 400),
-		"request_count": gorm.Expr("request_count + ?", 1),
+		"quota":             gorm.Expr("quota - ?", 400),
+		"used_quota":        gorm.Expr("used_quota + ?", 400),
+		"request_count":     gorm.Expr("request_count + ?", 1),
+		"daily_token_limit": 20_000,
 	}).Error)
 
 	staleUser.DisplayName = "after"
@@ -60,6 +62,47 @@ func TestUserUpdateDoesNotOverwriteAccountingFields(t *testing.T) {
 	assert.Equal(t, 600, got.Quota)
 	assert.Equal(t, 420, got.UsedQuota)
 	assert.Equal(t, 4, got.RequestCount)
+	assert.EqualValues(t, 20_000, got.DailyTokenLimit)
+}
+
+func TestUserEditPreservesDailyTokenLimitUntilExplicitlyUpdated(t *testing.T) {
+	setupUserUpdateTestState(t)
+
+	user := User{
+		Id:              3,
+		Username:        "daily-limit-user",
+		Password:        "password",
+		DisplayName:     "before",
+		Status:          common.UserStatusEnabled,
+		DailyTokenLimit: 10_000,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+
+	user.DisplayName = "after"
+	require.NoError(t, user.EditWithTx(DB, false))
+	assert.EqualValues(t, 10_000, user.DailyTokenLimit)
+
+	require.NoError(t, UpdateUserDailyTokenLimitWithTx(DB, user.Id, 20_000))
+	var got User
+	require.NoError(t, DB.First(&got, user.Id).Error)
+	assert.EqualValues(t, 20_000, got.DailyTokenLimit)
+}
+
+func TestUserDailyTokenLimitTreatsMigratedNullAsUnlimited(t *testing.T) {
+	setupUserUpdateTestState(t)
+
+	user := User{
+		Id:       4,
+		Username: "migrated-daily-limit-user",
+		Password: "password",
+		Status:   common.UserStatusEnabled,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).UpdateColumn("daily_token_limit", nil).Error)
+
+	got, err := GetUserById(user.Id, false)
+	require.NoError(t, err)
+	assert.Zero(t, got.DailyTokenLimit)
 }
 
 func TestUpdateUserSettingOnlyUpdatesSetting(t *testing.T) {

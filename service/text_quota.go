@@ -395,6 +395,11 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, summary.Quota)
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
 	}
+	dailyTokens := summary.TotalTokens
+	if dailyTokens == 0 && billingUsage != nil {
+		dailyTokens = billingUsage.TotalTokens
+	}
+	SettleDailyTokens(ctx, relayInfo, dailyTokens)
 
 	if err := SettleBilling(ctx, relayInfo, summary.Quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())

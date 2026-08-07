@@ -45,6 +45,7 @@ export const userSchema = z.object({
   quota: z.number(),
   used_quota: z.number(),
   request_count: z.number(),
+  daily_token_limit: z.number().int().min(0).optional(),
   group: z.string(),
   aff_code: z.string().optional(),
   aff_count: z.number().optional(),
@@ -132,6 +133,7 @@ export interface UserFormData {
   username: string
   display_name: string
   password?: string
+  daily_token_limit: number
   role?: number // Only used when creating user
   quota?: number // Only used when updating user
   group?: string // Only used when updating user

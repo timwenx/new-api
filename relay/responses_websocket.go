@@ -467,8 +467,12 @@ func (s *responsesWSSession) prepareCall(create responsesWSCreateRequest, commit
 	if err != nil {
 		return nil, nil, types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
 	}
+	if apiErr := service.PreConsumeDailyTokens(relayInfo, tokens, meta.MaxTokens); apiErr != nil {
+		return nil, nil, apiErr
+	}
 	if !priceData.FreeModel {
 		if apiErr := service.PreConsumeBilling(s.c, priceData.QuotaToPreConsume, relayInfo); apiErr != nil {
+			service.RefundDailyTokens(s.c, relayInfo)
 			return nil, nil, apiErr
 		}
 	}
@@ -481,6 +485,7 @@ func (s *responsesWSSession) prepareCall(create responsesWSCreateRequest, commit
 			if relayInfo.Billing != nil {
 				relayInfo.Billing.Refund(s.c)
 			}
+			service.RefundDailyTokens(s.c, relayInfo)
 			return nil, nil, apiErr
 		}
 	}
@@ -736,9 +741,13 @@ func finalizeResponsesWSUsage(state *responsesWSCallState) {
 }
 
 func (state *responsesWSCallState) refund(c *gin.Context) {
-	if state != nil && state.info != nil && state.info.Billing != nil {
+	if state == nil || state.info == nil {
+		return
+	}
+	if state.info.Billing != nil {
 		state.info.Billing.Refund(c)
 	}
+	service.RefundDailyTokens(c, state.info)
 }
 
 func (s *responsesWSSession) tryReserveCurrent(state *responsesWSCallState) bool {
