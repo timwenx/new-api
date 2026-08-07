@@ -119,6 +119,7 @@ type RelayInfo struct {
 	UserSetting            dto.UserSetting
 	UserEmail              string
 	UserQuota              int
+	DailyTokenLimit        int64
 	RelayFormat            types.RelayFormat
 	SendResponseCount      int
 	ReceivedResponseCount  int
@@ -130,6 +131,9 @@ type RelayInfo struct {
 	// Billing 是计费会话，封装了预扣费/结算/退款的统一生命周期。
 	// 免费模型时为 nil。
 	Billing BillingSettler
+	// DailyTokens is the account-level daily token reservation for this request.
+	// It applies independently of wallet/subscription billing, including free models.
+	DailyTokens DailyTokenSettler
 	// BillingSource indicates whether this request is billed from wallet quota or subscription.
 	// "" or "wallet" => wallet; "subscription" => subscription
 	BillingSource string
@@ -470,15 +474,17 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 	if reqId == "" {
 		reqId = common.NewRequestId()
 	}
+	dailyTokenLimit, _ := common.GetContextKeyType[int64](c, constant.ContextKeyUserDailyTokenLimit)
 	info := &RelayInfo{
 		Request: request,
 
-		RequestId:  reqId,
-		UserId:     common.GetContextKeyInt(c, constant.ContextKeyUserId),
-		UsingGroup: common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
-		UserGroup:  common.GetContextKeyString(c, constant.ContextKeyUserGroup),
-		UserQuota:  common.GetContextKeyInt(c, constant.ContextKeyUserQuota),
-		UserEmail:  common.GetContextKeyString(c, constant.ContextKeyUserEmail),
+		RequestId:       reqId,
+		UserId:          common.GetContextKeyInt(c, constant.ContextKeyUserId),
+		UsingGroup:      common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
+		UserGroup:       common.GetContextKeyString(c, constant.ContextKeyUserGroup),
+		UserQuota:       common.GetContextKeyInt(c, constant.ContextKeyUserQuota),
+		UserEmail:       common.GetContextKeyString(c, constant.ContextKeyUserEmail),
+		DailyTokenLimit: dailyTokenLimit,
 
 		OriginModelName: common.GetContextKeyString(c, constant.ContextKeyOriginalModel),
 

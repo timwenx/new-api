@@ -139,7 +139,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 
 	needSensitiveCheck := setting.ShouldCheckPromptSensitive()
-	needCountToken := constant.CountToken
+	needCountToken := constant.CountToken || relayInfo.DailyTokenLimit > 0
 	// Avoid building huge CombineText (strings.Join) when token counting and sensitive check are both disabled.
 	var meta *types.TokenCountMeta
 	if needSensitiveCheck || needCountToken {
@@ -170,6 +170,16 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
 		return
 	}
+
+	newAPIError = service.PreConsumeDailyTokens(relayInfo, tokens, meta.MaxTokens)
+	if newAPIError != nil {
+		return
+	}
+	defer func() {
+		if newAPIError != nil {
+			service.RefundDailyTokens(c, relayInfo)
+		}
+	}()
 
 	// common.SetContextKey(c, constant.ContextKeyTokenCountMeta, meta)
 

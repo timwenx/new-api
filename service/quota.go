@@ -227,6 +227,11 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, quota)
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, quota)
 	}
+	dailyTokens := usage.InputTokens + usage.OutputTokens
+	if dailyTokens == 0 {
+		dailyTokens = usage.TotalTokens
+	}
+	SettleDailyTokens(ctx, relayInfo, dailyTokens)
 
 	if err := SettleBilling(ctx, relayInfo, quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
@@ -350,6 +355,14 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, quota)
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, quota)
 	}
+	dailyTokens := usage.PromptTokens + usage.CompletionTokens
+	if dailyTokens == 0 {
+		dailyTokens = usage.InputTokens + usage.OutputTokens
+	}
+	if dailyTokens == 0 {
+		dailyTokens = usage.TotalTokens
+	}
+	SettleDailyTokens(ctx, relayInfo, dailyTokens)
 
 	if err := SettleBilling(ctx, relayInfo, quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())

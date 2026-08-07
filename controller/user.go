@@ -657,9 +657,15 @@ func GetUserModels(c *gin.Context) {
 	return
 }
 
+type updateUserRequest struct {
+	model.User
+	DailyTokenLimit *int64 `json:"daily_token_limit"`
+}
+
 func UpdateUser(c *gin.Context) {
-	var updatedUser model.User
-	err := json.NewDecoder(c.Request.Body).Decode(&updatedUser)
+	var request updateUserRequest
+	err := json.NewDecoder(c.Request.Body).Decode(&request)
+	updatedUser := request.User
 	if err != nil || updatedUser.Id == 0 {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
@@ -674,6 +680,10 @@ func UpdateUser(c *gin.Context) {
 	}
 	if err := common.Validate.Struct(&updatedUser); err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
+		return
+	}
+	if request.DailyTokenLimit != nil && (*request.DailyTokenLimit < 0 || *request.DailyTokenLimit > model.MaxDailyTokenLimit) {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	originUser, err := model.GetUserById(updatedUser.Id, false)
@@ -700,6 +710,11 @@ func UpdateUser(c *gin.Context) {
 		if err := updatedUser.EditWithTx(tx, updatePassword); err != nil {
 			return err
 		}
+		if request.DailyTokenLimit != nil {
+			if err := model.UpdateUserDailyTokenLimitWithTx(tx, updatedUser.Id, *request.DailyTokenLimit); err != nil {
+				return err
+			}
+		}
 		touched, err := updateAdminPermissionsForUserInTx(c, tx, updatedUser.Id, originUser.Role, updatedUser.AdminPermissions)
 		authzTouched = touched
 		return err
@@ -716,10 +731,14 @@ func UpdateUser(c *gin.Context) {
 	if err := model.InvalidateUserCache(updatedUser.Id); err != nil {
 		common.SysLog(fmt.Sprintf("failed to invalidate user cache for user %d: %s", updatedUser.Id, err.Error()))
 	}
-	recordManageAuditFor(c, updatedUser.Id, "user.update", map[string]interface{}{
+	auditDetails := map[string]interface{}{
 		"username": originUser.Username,
 		"id":       updatedUser.Id,
-	})
+	}
+	if request.DailyTokenLimit != nil {
+		auditDetails["daily_token_limit"] = *request.DailyTokenLimit
+	}
+	recordManageAuditFor(c, updatedUser.Id, "user.update", auditDetails)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -980,10 +999,11 @@ func CreateUser(c *gin.Context) {
 	}
 	// Even for admin users, we cannot fully trust them!
 	cleanUser := model.User{
-		Username:    user.Username,
-		Password:    user.Password,
-		DisplayName: user.DisplayName,
-		Role:        user.Role, // 保持管理员设置的角色
+		Username:        user.Username,
+		Password:        user.Password,
+		DisplayName:     user.DisplayName,
+		Role:            user.Role, // 保持管理员设置的角色
+		DailyTokenLimit: user.DailyTokenLimit,
 	}
 	authzTouched := false
 	if err := model.DB.Transaction(func(tx *gorm.DB) error {
@@ -1004,10 +1024,14 @@ func CreateUser(c *gin.Context) {
 		}
 	}
 	cleanUser.FinishInsert(0)
+	if err := model.InvalidateUserCache(cleanUser.Id); err != nil {
+		common.SysLog(fmt.Sprintf("failed to invalidate cache for newly created user %d: %s", cleanUser.Id, err.Error()))
+	}
 
 	recordManageAuditFor(c, cleanUser.Id, "user.create", map[string]interface{}{
-		"username": cleanUser.Username,
-		"role":     cleanUser.Role,
+		"username":          cleanUser.Username,
+		"role":              cleanUser.Role,
+		"daily_token_limit": cleanUser.DailyTokenLimit,
 	})
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
