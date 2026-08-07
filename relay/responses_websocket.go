@@ -82,26 +82,43 @@ type responsesWSSession struct {
 }
 
 func ResponsesWebSocketHelper(c *gin.Context, client *websocket.Conn) *types.NewAPIError {
-	return responsesWebSocketHelper(c, client, relaycommon.RefreshClientWebSocketReadDeadline)
+	return responsesWebSocketHelper(
+		c,
+		client,
+		relaycommon.SetClientWebSocketInitialReadDeadline,
+		relaycommon.RefreshClientWebSocketReadDeadline,
+	)
 }
 
-func responsesWebSocketHelper(c *gin.Context, client *websocket.Conn, refreshReadDeadline func(*websocket.Conn) error) *types.NewAPIError {
+func responsesWebSocketHelper(
+	c *gin.Context,
+	client *websocket.Conn,
+	setInitialReadDeadline func(*websocket.Conn) error,
+	refreshReadDeadline func(*websocket.Conn) error,
+) *types.NewAPIError {
 	session := &responsesWSSession{
 		c:           c,
 		client:      client,
 		connectedAt: time.Now(),
 	}
 	defer session.shutdown()
-	if err := refreshReadDeadline(client); err != nil {
+	if err := setInitialReadDeadline(client); err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponse, types.ErrOptionWithSkipRetry())
 	}
 
+	receivedClientMessage := false
 	for {
 		messageType, message, err := client.ReadMessage()
 		if err != nil {
 			if relaycommon.IsWebSocketIdleTimeout(err) {
-				logger.LogInfo(c, "responses websocket closed after idle timeout")
-				session.closeForIdleTimeout()
+				closeReason := relaycommon.WebSocketIdleCloseReason
+				if receivedClientMessage {
+					logger.LogInfo(c, "responses websocket closed after idle timeout")
+				} else {
+					closeReason = relaycommon.WebSocketInitialMessageCloseReason
+					logger.LogInfo(c, "responses websocket closed after initial message timeout")
+				}
+				session.closeWithCode(websocket.CloseGoingAway, closeReason)
 				return nil
 			}
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
@@ -109,6 +126,7 @@ func responsesWebSocketHelper(c *gin.Context, client *websocket.Conn, refreshRea
 			}
 			return types.NewError(err, types.ErrorCodeBadRequestBody, types.ErrOptionWithSkipRetry())
 		}
+		receivedClientMessage = true
 		if err := refreshReadDeadline(client); err != nil {
 			return types.NewError(err, types.ErrorCodeBadResponse, types.ErrOptionWithSkipRetry())
 		}
@@ -921,10 +939,6 @@ func (s *responsesWSSession) registerChannelClose(channelID int, modelName strin
 
 func (s *responsesWSSession) closeForPolicy(reason string) {
 	s.closeWithCode(websocket.ClosePolicyViolation, reason)
-}
-
-func (s *responsesWSSession) closeForIdleTimeout() {
-	s.closeWithCode(websocket.CloseGoingAway, relaycommon.WebSocketIdleCloseReason)
 }
 
 func (s *responsesWSSession) closeWithCode(code int, reason string) {

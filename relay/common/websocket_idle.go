@@ -10,7 +10,20 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const WebSocketIdleCloseReason = "websocket idle timeout"
+const (
+	WebSocketInitialMessageCloseReason = "websocket initial message timeout"
+	WebSocketIdleCloseReason           = "websocket idle timeout"
+	webSocketInitialMessageTimeout     = 30 * time.Second
+)
+
+// SetClientWebSocketInitialReadDeadline requires the first application message
+// within a fixed window, independent of the configured idle timeout.
+func SetClientWebSocketInitialReadDeadline(conn *websocket.Conn) error {
+	if conn == nil {
+		return errors.New("websocket connection is nil")
+	}
+	return conn.SetReadDeadline(time.Now().Add(webSocketInitialMessageTimeout))
+}
 
 // RefreshClientWebSocketReadDeadline counts only data messages as activity.
 // Gorilla handles Ping/Pong control frames inside ReadMessage, so heartbeats do

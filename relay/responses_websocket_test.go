@@ -380,20 +380,25 @@ func TestResponsesWSIdleActivityIgnoresPingAndRefreshesOnDataMessage(t *testing.
 		pingSeen <- struct{}{}
 		return defaultPingHandler(data)
 	})
-	refreshCalls := make(chan struct{}, 3)
+	initialDeadlineSet := make(chan struct{}, 1)
+	setInitialDeadline := func(conn *websocket.Conn) error {
+		initialDeadlineSet <- struct{}{}
+		return conn.SetReadDeadline(time.Time{})
+	}
+	refreshCalls := make(chan struct{}, 2)
 	refresh := func(conn *websocket.Conn) error {
 		refreshCalls <- struct{}{}
 		return conn.SetReadDeadline(time.Time{})
 	}
 	done := make(chan *types.NewAPIError, 1)
 	go func() {
-		done <- responsesWebSocketHelper(ctx, client, refresh)
+		done <- responsesWebSocketHelper(ctx, client, setInitialDeadline, refresh)
 	}()
 
 	select {
-	case <-refreshCalls:
+	case <-initialDeadlineSet:
 	case <-time.After(time.Second):
-		t.Fatal("initial WebSocket idle deadline was not set")
+		t.Fatal("initial WebSocket message deadline was not set")
 	}
 	require.NoError(t, clientPeer.WriteControl(websocket.PingMessage, []byte("heartbeat"), time.Now().Add(time.Second)))
 	select {
@@ -426,21 +431,54 @@ func TestResponsesWSIdleActivityIgnoresPingAndRefreshesOnDataMessage(t *testing.
 	}
 }
 
-func TestResponsesWSIdleTimeoutClosesConnection(t *testing.T) {
+func TestResponsesWSInitialMessageTimeoutClosesConnection(t *testing.T) {
 	clientPeer, client, cleanup := newTestWebSocketPair(t)
 	defer cleanup()
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 
+	setInitialDeadline := func(conn *websocket.Conn) error {
+		return conn.SetReadDeadline(time.Now().Add(25 * time.Millisecond))
+	}
+	done := make(chan *types.NewAPIError, 1)
+	go func() {
+		done <- responsesWebSocketHelper(ctx, client, setInitialDeadline, relaycommon.RefreshClientWebSocketReadDeadline)
+	}()
+
+	require.NoError(t, clientPeer.SetReadDeadline(time.Now().Add(time.Second)))
+	_, _, err := clientPeer.ReadMessage()
+	var closeErr *websocket.CloseError
+	require.ErrorAs(t, err, &closeErr)
+	assert.Equal(t, websocket.CloseGoingAway, closeErr.Code)
+	assert.Equal(t, relaycommon.WebSocketInitialMessageCloseReason, closeErr.Text)
+	select {
+	case apiErr := <-done:
+		assert.Nil(t, apiErr)
+	case <-time.After(time.Second):
+		t.Fatal("responses WebSocket helper did not stop after initial message timeout")
+	}
+}
+
+func TestResponsesWSIdleTimeoutAfterInitialMessageClosesConnection(t *testing.T) {
+	clientPeer, client, cleanup := newTestWebSocketPair(t)
+	defer cleanup()
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+
+	setInitialDeadline := func(conn *websocket.Conn) error {
+		return conn.SetReadDeadline(time.Time{})
+	}
 	refresh := func(conn *websocket.Conn) error {
 		return conn.SetReadDeadline(time.Now().Add(25 * time.Millisecond))
 	}
 	done := make(chan *types.NewAPIError, 1)
 	go func() {
-		done <- responsesWebSocketHelper(ctx, client, refresh)
+		done <- responsesWebSocketHelper(ctx, client, setInitialDeadline, refresh)
 	}()
 
+	require.NoError(t, clientPeer.WriteMessage(websocket.TextMessage, []byte(`{}`)))
 	require.NoError(t, clientPeer.SetReadDeadline(time.Now().Add(time.Second)))
 	_, _, err := clientPeer.ReadMessage()
+	require.NoError(t, err)
+	_, _, err = clientPeer.ReadMessage()
 	var closeErr *websocket.CloseError
 	require.ErrorAs(t, err, &closeErr)
 	assert.Equal(t, websocket.CloseGoingAway, closeErr.Code)
