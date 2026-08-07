@@ -36,7 +36,9 @@ export function ChannelModelsSection(props: ChannelModelsSectionProps) {
     <SideDrawerSection>
       <SideDrawerSectionHeader
         title={t('Models & Groups')}
-        description={t('Published models, groups, and model remapping rules.')}
+        description={t(
+          'Published models, supported protocols, groups, and model remapping rules.'
+        )}
         icon={<Boxes className='h-4 w-4' aria-hidden='true' />}
         iconTone='chart-4'
       />

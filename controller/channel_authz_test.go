@@ -31,10 +31,13 @@ func TestChannelHasSensitiveChanges(t *testing.T) {
 		updated := PatchChannel{Channel: *origin}
 		updated.Models = "gpt-4o,gpt-4o-mini"
 		updated.Group = "vip"
+		supportedEndpoints := "openai-response"
+		updated.SupportedEndpoints = &supportedEndpoints
 
 		assert.False(t, channelHasSensitiveChanges(&updated, origin, map[string]any{
-			"models": updated.Models,
-			"group":  updated.Group,
+			"models":              updated.Models,
+			"group":               updated.Group,
+			"supported_endpoints": supportedEndpoints,
 		}))
 	})
 

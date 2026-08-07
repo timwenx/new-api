@@ -17,3 +17,20 @@ const (
 	//EndpointTypeKling          EndpointType = "kling"
 	//EndpointTypeJimeng         EndpointType = "jimeng"
 )
+
+func IsValidEndpointType(endpointType EndpointType) bool {
+	switch endpointType {
+	case EndpointTypeOpenAI,
+		EndpointTypeOpenAIResponse,
+		EndpointTypeOpenAIResponseCompact,
+		EndpointTypeAnthropic,
+		EndpointTypeGemini,
+		EndpointTypeJinaRerank,
+		EndpointTypeImageGeneration,
+		EndpointTypeEmbeddings,
+		EndpointTypeOpenAIVideo:
+		return true
+	default:
+		return false
+	}
+}

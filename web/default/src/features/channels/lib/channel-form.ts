@@ -136,6 +136,7 @@ export const channelFormSchema = z
     key: z.string(),
     openai_organization: z.string().optional(),
     models: z.string().min(1, ERROR_MESSAGES.REQUIRED_MODELS),
+    supported_endpoints: z.array(z.string()).optional(),
     group: z.array(z.string()).min(1, ERROR_MESSAGES.REQUIRED_GROUP),
     model_mapping: z
       .string()
@@ -306,6 +307,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   key: '',
   openai_organization: '',
   models: '',
+  supported_endpoints: [],
   group: ['default'],
   model_mapping: '',
   priority: 0,
@@ -453,6 +455,10 @@ export function transformChannelToFormDefaults(
     key: '', // Never populate key from backend for security
     openai_organization: channel.openai_organization || '',
     models: channel.models || '',
+    supported_endpoints: String(channel.supported_endpoints || '')
+      .split(',')
+      .map((endpoint) => endpoint.trim())
+      .filter(Boolean),
     group: parseGroups(channel.group || 'default'),
     model_mapping: channel.model_mapping || '',
     priority: channel.priority || 0,
@@ -667,6 +673,7 @@ export function transformFormDataToCreatePayload(formData: ChannelFormValues): {
     key: formData.key,
     openai_organization: formData.openai_organization || null,
     models: formData.models,
+    supported_endpoints: formData.supported_endpoints?.join(',') || null,
     group: formatGroups(formData.group),
     model_mapping: formData.model_mapping || null,
     priority: formData.priority || null,
@@ -715,6 +722,7 @@ export function transformFormDataToUpdatePayload(
     base_url: normalizeBaseUrl(formData.base_url) || null,
     openai_organization: formData.openai_organization || null,
     models: formData.models,
+    supported_endpoints: formData.supported_endpoints?.join(',') || null,
     group: formatGroups(formData.group),
     model_mapping: formData.model_mapping || null,
     priority: formData.priority ?? 0,
@@ -746,6 +754,7 @@ export function transformFormDataToUpdatePayload(
   // Send explicit empty strings for nullable fields so GORM updates can clear them.
   payload.base_url = normalizeBaseUrl(formData.base_url) || ''
   payload.openai_organization = formData.openai_organization || ''
+  payload.supported_endpoints = formData.supported_endpoints?.join(',') || ''
   payload.test_model = formData.test_model || ''
   payload.tag = formData.tag || ''
   payload.remark = formData.remark || ''
