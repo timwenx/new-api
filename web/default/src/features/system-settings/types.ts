@@ -226,6 +226,7 @@ export type ModelSettings = {
   DefaultUseAutoGroup: boolean
   'group_ratio_setting.group_special_usable_group': string
   RetryTimes: number
+  ResponsesSameChannelRetryEnabled: boolean
   ChannelDisableThreshold: string
   AutomaticDisableChannelEnabled: boolean
   AutomaticEnableChannelEnabled: boolean

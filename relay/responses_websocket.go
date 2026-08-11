@@ -330,11 +330,12 @@ func (s *responsesWSSession) connectAndSendFirst(create responsesWSCreateRequest
 	s.c.Set(common.KeyRequestBody, requestBody)
 
 	retryParam := &service.RetryParam{
-		Ctx:         s.c,
-		TokenGroup:  common.GetContextKeyString(s.c, appconstant.ContextKeyUsingGroup),
-		ModelName:   req.Model,
-		RequestPath: s.c.Request.URL.Path,
-		Retry:       common.GetPointer(0),
+		Ctx:                  s.c,
+		TokenGroup:           common.GetContextKeyString(s.c, appconstant.ContextKeyUsingGroup),
+		ModelName:            req.Model,
+		RequestPath:          s.c.Request.URL.Path,
+		Retry:                common.GetPointer(0),
+		OriginalChannelRetry: service.ShouldRetryResponsesOnOriginalChannel(s.c),
 	}
 	if retryParam.TokenGroup == "" {
 		retryParam.TokenGroup = common.GetContextKeyString(s.c, appconstant.ContextKeyTokenGroup)
@@ -342,10 +343,15 @@ func (s *responsesWSSession) connectAndSendFirst(create responsesWSCreateRequest
 
 	var lastErr *types.NewAPIError
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
-		channel, apiErr := selectResponsesWSChannel(s.c, req.Model, retryParam)
-		if apiErr != nil {
-			lastErr = apiErr
-			break
+		channel := retryParam.OriginalChannelForRetry()
+		if channel == nil {
+			var apiErr *types.NewAPIError
+			channel, apiErr = selectResponsesWSChannel(s.c, req.Model, retryParam)
+			if apiErr != nil {
+				lastErr = apiErr
+				break
+			}
+			retryParam.RememberOriginalChannel(channel)
 		}
 		addResponsesWSUsedChannel(s.c, channel.Id)
 
@@ -448,7 +454,7 @@ func (s *responsesWSSession) processChannelError(channel *appmodel.Channel, apiE
 	if retryParam == nil {
 		return apiErr, false
 	}
-	return apiErr, service.ShouldRetryRelayError(s.c, apiErr, common.RetryTimes-retryParam.GetRetry())
+	return apiErr, service.ShouldRetryRelayError(s.c, apiErr, common.RetryTimes-retryParam.GetRetry(), retryParam.OriginalChannelRetry)
 }
 
 func (s *responsesWSSession) prepareCall(create responsesWSCreateRequest, commitRate middleware.ModelRequestRateLimitCommit, upstreamWebSocket bool) (*responsesWSCallState, []byte, *types.NewAPIError) {

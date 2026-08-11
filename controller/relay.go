@@ -208,22 +208,28 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}()
 
 	retryParam := &service.RetryParam{
-		Ctx:         c,
-		TokenGroup:  relayInfo.TokenGroup,
-		ModelName:   relayInfo.OriginModelName,
-		RequestPath: c.Request.URL.Path,
-		Retry:       common.GetPointer(0),
+		Ctx:                  c,
+		TokenGroup:           relayInfo.TokenGroup,
+		ModelName:            relayInfo.OriginModelName,
+		RequestPath:          c.Request.URL.Path,
+		Retry:                common.GetPointer(0),
+		OriginalChannelRetry: service.ShouldRetryResponsesOnOriginalChannel(c),
 	}
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
 		relayInfo.RetryIndex = retryParam.GetRetry()
-		channel, channelErr := getChannel(c, relayInfo, retryParam)
-		if channelErr != nil {
-			logger.LogError(c, channelErr.Error())
-			newAPIError = channelErr
-			break
+		channel := retryParam.OriginalChannelForRetry()
+		if channel == nil {
+			var channelErr *types.NewAPIError
+			channel, channelErr = getChannel(c, relayInfo, retryParam)
+			if channelErr != nil {
+				logger.LogError(c, channelErr.Error())
+				newAPIError = channelErr
+				break
+			}
+			retryParam.RememberOriginalChannel(channel)
 		}
 
 		addUsedChannel(c, channel.Id)
@@ -260,7 +266,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
 
-		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
+		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry(), retryParam.OriginalChannelRetry) {
 			break
 		}
 	}
@@ -351,8 +357,8 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 	return channel, nil
 }
 
-func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
-	return service.ShouldRetryRelayError(c, openaiErr, retryTimes)
+func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int, originalChannelRetry bool) bool {
+	return service.ShouldRetryRelayError(c, openaiErr, retryTimes, originalChannelRetry)
 }
 
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
