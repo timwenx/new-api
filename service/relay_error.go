@@ -15,14 +15,20 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func ShouldRetryRelayError(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
+func ShouldRetryResponsesOnOriginalChannel(c *gin.Context) bool {
+	return common.ResponsesSameChannelRetryEnabled &&
+		c != nil && c.Request != nil && c.Request.URL != nil &&
+		c.Request.URL.Path == "/v1/responses"
+}
+
+func ShouldRetryRelayError(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int, originalChannelRetry bool) bool {
 	if openaiErr == nil {
 		return false
 	}
-	if ShouldSkipRetryAfterChannelAffinityFailure(c) {
+	if !originalChannelRetry && ShouldSkipRetryAfterChannelAffinityFailure(c) {
 		return false
 	}
-	if c != nil {
+	if !originalChannelRetry && c != nil {
 		if _, ok := c.Get("specific_channel_id"); ok {
 			return false
 		}

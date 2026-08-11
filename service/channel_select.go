@@ -12,12 +12,14 @@ import (
 )
 
 type RetryParam struct {
-	Ctx          *gin.Context
-	TokenGroup   string
-	ModelName    string
-	RequestPath  string
-	Retry        *int
-	resetNextTry bool
+	Ctx                  *gin.Context
+	TokenGroup           string
+	ModelName            string
+	RequestPath          string
+	Retry                *int
+	OriginalChannelRetry bool
+	originalChannel      *model.Channel
+	resetNextTry         bool
 }
 
 func (p *RetryParam) GetRetry() int {
@@ -44,6 +46,19 @@ func (p *RetryParam) IncreaseRetry() {
 
 func (p *RetryParam) ResetRetryNextTry() {
 	p.resetNextTry = true
+}
+
+func (p *RetryParam) RememberOriginalChannel(channel *model.Channel) {
+	if p.OriginalChannelRetry && p.GetRetry() == 0 {
+		p.originalChannel = channel
+	}
+}
+
+func (p *RetryParam) OriginalChannelForRetry() *model.Channel {
+	if !p.OriginalChannelRetry || p.GetRetry() == 0 {
+		return nil
+	}
+	return p.originalChannel
 }
 
 // CacheGetRandomSatisfiedChannel tries to get a random channel that satisfies the requirements.
