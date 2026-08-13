@@ -26,6 +26,29 @@ func TestReserveUserDailyTokensTreatsZeroLimitAsUnlimited(t *testing.T) {
 	assert.Zero(t, count)
 }
 
+func TestPopulateUsersDailyTokenRemaining(t *testing.T) {
+	truncateTables(t)
+
+	const usageDate = "2026-08-07"
+	users := []*User{
+		{Id: 201, DailyTokenLimit: 1_000},
+		{Id: 202, DailyTokenLimit: 0},
+		{Id: 203, DailyTokenLimit: 100},
+		{Id: 204, DailyTokenLimit: 200},
+	}
+	require.NoError(t, DB.Create(&[]UserDailyTokenUsage{
+		{UserId: 201, UsageDate: usageDate, UsedTokens: 250},
+		{UserId: 202, UsageDate: usageDate, UsedTokens: 50},
+		{UserId: 203, UsageDate: usageDate, UsedTokens: 150},
+	}).Error)
+
+	require.NoError(t, PopulateUsersDailyTokenRemaining(users, usageDate))
+	assert.EqualValues(t, 750, users[0].DailyTokenRemaining)
+	assert.Zero(t, users[1].DailyTokenRemaining)
+	assert.Zero(t, users[2].DailyTokenRemaining)
+	assert.EqualValues(t, 200, users[3].DailyTokenRemaining)
+}
+
 func TestReserveUserDailyTokensEnforcesLimitAndSupportsSettlement(t *testing.T) {
 	truncateTables(t)
 

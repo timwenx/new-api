@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -216,6 +217,32 @@ func WssAuth(c *gin.Context) {
 
 }
 
+// UserExpirationAuth blocks session-authenticated relay requests for expired users.
+// It is intentionally separate from UserAuth so expired users can still access
+// account and management endpoints where their expiration can be repaired.
+func UserExpirationAuth() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		userId := c.GetInt("id")
+		if userId == 0 {
+			abortWithOpenAiMessage(c, http.StatusUnauthorized, common.TranslateMessage(c, i18n.MsgAuthUserInfoInvalid))
+			return
+		}
+		userCache, err := model.GetUserCache(userId)
+		if err != nil {
+			common.SysLog(fmt.Sprintf("UserExpirationAuth GetUserCache error for user %d: %v", userId, err))
+			abortWithOpenAiMessage(c, http.StatusInternalServerError,
+				common.TranslateMessage(c, i18n.MsgDatabaseError))
+			return
+		}
+		if isUserExpired(userCache, time.Now()) {
+			abortExpiredUser(c)
+			return
+		}
+		userCache.WriteContext(c)
+		c.Next()
+	}
+}
+
 // TokenOrUserAuth allows either session-based user auth or API token auth.
 // Used for endpoints that need to be accessible from both the dashboard and API clients.
 func TokenOrUserAuth() func(c *gin.Context) {
@@ -224,7 +251,24 @@ func TokenOrUserAuth() func(c *gin.Context) {
 		session := sessions.Default(c)
 		if id := session.Get("id"); id != nil {
 			if status, ok := session.Get("status").(int); ok && status == common.UserStatusEnabled {
-				c.Set("id", id)
+				userId, ok := id.(int)
+				if !ok {
+					abortWithOpenAiMessage(c, http.StatusUnauthorized, common.TranslateMessage(c, i18n.MsgAuthUserInfoInvalid))
+					return
+				}
+				userCache, err := model.GetUserCache(userId)
+				if err != nil {
+					common.SysLog(fmt.Sprintf("TokenOrUserAuth GetUserCache error for user %d: %v", userId, err))
+					abortWithOpenAiMessage(c, http.StatusInternalServerError,
+						common.TranslateMessage(c, i18n.MsgDatabaseError))
+					return
+				}
+				if isUserExpired(userCache, time.Now()) {
+					abortExpiredUser(c)
+					return
+				}
+				userCache.WriteContext(c)
+				c.Set("id", userId)
 				c.Next()
 				return
 			}
@@ -401,6 +445,10 @@ func TokenAuth() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusForbidden, common.TranslateMessage(c, i18n.MsgAuthUserBanned))
 			return
 		}
+		if isUserExpired(userCache, time.Now()) {
+			abortExpiredUser(c)
+			return
+		}
 
 		userCache.WriteContext(c)
 
@@ -429,6 +477,15 @@ func TokenAuth() func(c *gin.Context) {
 		}
 		c.Next()
 	}
+}
+
+func isUserExpired(user *model.UserBase, now time.Time) bool {
+	return user != nil && user.ExpiresAt > 0 && user.ExpiresAt <= now.Unix()
+}
+
+func abortExpiredUser(c *gin.Context) {
+	abortWithOpenAiMessage(c, http.StatusForbidden,
+		common.TranslateMessage(c, i18n.MsgQuotaInsufficient), types.ErrorCodeInsufficientUserQuota)
 }
 
 func applyWebSocketSubprotocolAuthorization(header http.Header) bool {

@@ -40,6 +40,7 @@ type User struct {
 	UsedQuota        int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
 	RequestCount     int                        `json:"request_count" gorm:"type:int;default:0;"`               // request number
 	DailyTokenLimit  int64                      `json:"daily_token_limit" gorm:"type:bigint" validate:"gte=0,lte=2147483647"`
+	ExpiresAt        int64                      `json:"expires_at" gorm:"type:bigint"`
 	Group            string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
 	AffCode          string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
 	AffCount         int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
@@ -54,6 +55,8 @@ type User struct {
 	CreatedAt        int64                      `json:"created_at" gorm:"autoCreateTime;column:created_at"`
 	LastLoginAt      int64                      `json:"last_login_at" gorm:"default:0;column:last_login_at"`
 	AdminPermissions map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
+
+	DailyTokenRemaining int64 `json:"daily_token_remaining" gorm:"-:all"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
@@ -66,6 +69,7 @@ func (user *User) ToBaseUser() *UserBase {
 		Setting:         user.Setting,
 		Email:           user.Email,
 		DailyTokenLimit: user.DailyTokenLimit,
+		ExpiresAt:       user.ExpiresAt,
 	}
 	return cache
 }
@@ -662,7 +666,7 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 	if err = tx.First(&current, user.Id).Error; err != nil {
 		return err
 	}
-	if err = tx.Model(&current).Omit("quota", "used_quota", "request_count", "daily_token_limit").Updates(newUser).Error; err != nil {
+	if err = tx.Model(&current).Omit("quota", "used_quota", "request_count", "daily_token_limit", "expires_at").Updates(newUser).Error; err != nil {
 		return err
 	}
 	return tx.First(user, user.Id).Error
@@ -703,6 +707,15 @@ func (user *User) EditWithTx(tx *gorm.DB, updatePassword bool) error {
 		return err
 	}
 	return tx.First(user, user.Id).Error
+}
+
+// UpdateUserExpiresAtWithTx updates the administrator-controlled user expiration time.
+// A zero timestamp means the user never expires.
+func UpdateUserExpiresAtWithTx(tx *gorm.DB, userId int, expiresAt int64) error {
+	if userId <= 0 || expiresAt < 0 {
+		return errors.New("invalid user expiration time")
+	}
+	return tx.Model(&User{}).Where("id = ?", userId).Update("expires_at", expiresAt).Error
 }
 
 func (user *User) ClearBinding(bindingType string) error {

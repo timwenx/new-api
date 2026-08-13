@@ -24,6 +24,7 @@ import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { DateTimePicker } from '@/components/datetime-picker'
 import {
   SideDrawerSection,
   sideDrawerContentClassName,
@@ -376,6 +377,27 @@ export function UsersMutateDrawer({
                         {t(
                           '0 means unlimited. Resets daily at 00:00 (site timezone).'
                         )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='expires_at'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Expiration Time')}</FormLabel>
+                      <FormControl>
+                        <DateTimePicker
+                          value={field.value}
+                          onChange={field.onChange}
+                          placeholder={t('Never expires')}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t('Leave empty for never expires')}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>

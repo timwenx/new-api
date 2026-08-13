@@ -18,21 +18,29 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { ArrowRight, Flame, ShieldCheck, TrendingDown } from 'lucide-react'
+import {
+  ArrowRight,
+  Flame,
+  Gauge,
+  ShieldCheck,
+  TrendingDown,
+} from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { StaggerContainer, StaggerItem } from '@/components/page-transition'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { getUserQuotaDates } from '@/features/dashboard/api'
 import { useSummaryCardsConfig } from '@/features/dashboard/hooks/use-dashboard-config'
 import type { QuotaDataItem } from '@/features/dashboard/types'
 import { useStatus } from '@/hooks/use-status'
+import { getSelf } from '@/lib/api'
 import { getCurrencyLabel, isCurrencyDisplayEnabled } from '@/lib/currency'
 import { formatNumber, formatQuota } from '@/lib/format'
 import { computeTimeRange } from '@/lib/time'
 import { cn } from '@/lib/utils'
-import { useAuthStore } from '@/stores/auth-store'
+import { useAuthStore, type AuthUser } from '@/stores/auth-store'
 
 import { StatCard } from '../ui/stat-card'
 
@@ -141,10 +149,27 @@ export function SummaryCards() {
   const user = useAuthStore((state) => state.auth.user)
   const { status, loading } = useStatus()
 
+  const selfQuery = useQuery({
+    queryKey: ['dashboard', 'overview', 'self'],
+    queryFn: async (): Promise<AuthUser | null> => {
+      const response = await getSelf()
+      return response.success && response.data
+        ? (response.data as AuthUser)
+        : null
+    },
+    staleTime: 60 * 1000,
+  })
+
   const summaryTimeRange = useMemo(() => computeTimeRange(1), [])
-  const remainQuota = Number(user?.quota ?? 0)
-  const usedQuota = Number(user?.used_quota ?? 0)
-  const requestCount = Number(user?.request_count ?? 0)
+  const currentUser = selfQuery.data ?? user
+  const remainQuota = Number(currentUser?.quota ?? 0)
+  const usedQuota = Number(currentUser?.used_quota ?? 0)
+  const requestCount = Number(currentUser?.request_count ?? 0)
+  const dailyTokenLimit = Number(currentUser?.daily_token_limit ?? 0)
+  const dailyTokenRemaining = Math.max(
+    0,
+    Number(currentUser?.daily_token_remaining ?? 0)
+  )
 
   const usageTrendQuery = useQuery({
     queryKey: [
@@ -342,6 +367,23 @@ export function SummaryCards() {
                 </div>
               </div>
             </div>
+            {dailyTokenLimit > 0 && (
+              <div className='bg-background/60 rounded-lg px-2.5 py-2'>
+                <div className='text-muted-foreground flex items-center gap-1 text-[11px] leading-none font-medium'>
+                  <Gauge className='size-3 shrink-0' aria-hidden='true' />
+                  <span className='truncate'>
+                    {t('Daily Remaining Tokens')}
+                  </span>
+                </div>
+                {selfQuery.isLoading ? (
+                  <Skeleton className='mt-1.5 h-4 w-20' />
+                ) : (
+                  <div className='text-foreground mt-1.5 truncate text-xs font-semibold tabular-nums'>
+                    {formatNumber(dailyTokenRemaining)}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <Button className='justify-between' render={<Link to='/wallet' />}>
