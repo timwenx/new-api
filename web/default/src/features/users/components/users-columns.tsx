@@ -31,11 +31,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { formatQuota, formatTimestamp } from '@/lib/format'
+import { formatNumber, formatQuota, formatTimestamp } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   USER_STATUS,
+  USER_ROLE,
   USER_STATUSES,
   USER_ROLES,
   isUserDeleted,
@@ -51,6 +53,9 @@ function getQuotaProgressColor(percentage: number): string {
 
 export function useUsersColumns(): ColumnDef<User>[] {
   const { t } = useTranslation()
+  const isRoot = useAuthStore(
+    (state) => state.auth.user?.role === USER_ROLE.ROOT
+  )
   return [
     {
       id: 'select',
@@ -248,6 +253,22 @@ export function useUsersColumns(): ColumnDef<User>[] {
       size: 140,
       meta: { mobileOrder: 30 },
     },
+    ...(isRoot
+      ? [
+          {
+            accessorKey: 'daily_token_remaining',
+            header: t('Daily Remaining Tokens'),
+            cell: ({ row }) => (
+              <span className='text-sm font-medium tabular-nums'>
+                {formatNumber(row.original.daily_token_remaining ?? 0)}
+              </span>
+            ),
+            enableSorting: false,
+            size: 180,
+            meta: { mobileOrder: 50 },
+          } satisfies ColumnDef<User>,
+        ]
+      : []),
     {
       accessorKey: 'role',
       header: t('Role'),
@@ -276,77 +297,18 @@ export function useUsersColumns(): ColumnDef<User>[] {
       meta: { mobileOrder: 20 },
     },
     {
-      id: 'invite_info',
-      header: t('Invite Info'),
+      accessorKey: 'expires_at',
+      header: t('Expiration Time'),
       cell: ({ row }) => {
-        const user = row.original
-        const affCount = user.aff_count || 0
-        const affHistoryQuota = user.aff_history_quota || 0
-        const inviterId = user.inviter_id || 0
-
+        const expiresAt = row.original.expires_at ?? 0
         return (
-          <div className='flex max-w-full min-w-0 flex-wrap items-center gap-1 overflow-hidden'>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <StatusBadge
-                    label={`${t('Invited')}: ${affCount}`}
-                    variant='neutral'
-                    copyable={false}
-                    className='cursor-help'
-                  />
-                }
-              />
-              <TooltipContent>
-                <p className='text-xs'>{t('Number of users invited')}</p>
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <StatusBadge
-                    label={`${t('Revenue')}: ${formatQuota(affHistoryQuota)}`}
-                    variant='neutral'
-                    copyable={false}
-                    className='cursor-help'
-                  />
-                }
-              />
-              <TooltipContent>
-                <p className='text-xs'>{t('Total invitation revenue')}</p>
-              </TooltipContent>
-            </Tooltip>
-            {inviterId > 0 && (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <StatusBadge
-                      label={`${t('Inviter')}: ${inviterId}`}
-                      variant='neutral'
-                      copyable={false}
-                      className='cursor-help'
-                    />
-                  }
-                />
-                <TooltipContent>
-                  <p className='text-xs'>
-                    {t('Invited by user ID')} {inviterId}
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            )}
-            {inviterId === 0 && (
-              <StatusBadge
-                label={t('No Inviter')}
-                variant='neutral'
-                copyable={false}
-              />
-            )}
-          </div>
+          <span className='text-muted-foreground text-sm'>
+            {expiresAt > 0 ? formatTimestamp(expiresAt) : t('Never')}
+          </span>
         )
       },
-      size: 240,
       enableSorting: false,
+      size: 180,
       meta: { mobileHidden: true },
     },
     {

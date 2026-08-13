@@ -22,6 +22,50 @@ type UserDailyTokenUsage struct {
 	UsedTokens int64  `json:"used_tokens" gorm:"not null"`
 }
 
+// PopulateUsersDailyTokenRemaining fills the remaining allowance for a site-local date.
+// Users without a daily limit have a remaining value of zero.
+func PopulateUsersDailyTokenRemaining(users []*User, usageDate string) error {
+	if usageDate == "" {
+		return errors.New("invalid daily token usage date")
+	}
+
+	limitedUserIds := make([]int, 0, len(users))
+	for _, user := range users {
+		if user == nil {
+			continue
+		}
+		user.DailyTokenRemaining = 0
+		if user.DailyTokenLimit > 0 {
+			limitedUserIds = append(limitedUserIds, user.Id)
+		}
+	}
+	if len(limitedUserIds) == 0 {
+		return nil
+	}
+
+	var usages []UserDailyTokenUsage
+	if err := DB.Select("user_id", "used_tokens").
+		Where("usage_date = ? AND user_id IN ?", usageDate, limitedUserIds).
+		Find(&usages).Error; err != nil {
+		return err
+	}
+
+	usedTokensByUser := make(map[int]int64, len(usages))
+	for _, usage := range usages {
+		usedTokensByUser[usage.UserId] = usage.UsedTokens
+	}
+	for _, user := range users {
+		if user == nil || user.DailyTokenLimit <= 0 {
+			continue
+		}
+		remaining := user.DailyTokenLimit - usedTokensByUser[user.Id]
+		if remaining > 0 {
+			user.DailyTokenRemaining = remaining
+		}
+	}
+	return nil
+}
+
 // UpdateUserDailyTokenLimitWithTx updates the administrator-controlled user limit.
 func UpdateUserDailyTokenLimitWithTx(tx *gorm.DB, userId int, limit int64) error {
 	if userId <= 0 || limit < 0 || limit > MaxDailyTokenLimit {

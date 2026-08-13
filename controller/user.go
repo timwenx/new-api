@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
@@ -313,6 +314,12 @@ func GetAllUsers(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if c.GetInt("role") == common.RoleRootUser {
+		if err := populateTodayDailyTokenRemaining(users); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
 
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(users)
@@ -342,6 +349,12 @@ func SearchUsers(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if c.GetInt("role") == common.RoleRootUser {
+		if err := populateTodayDailyTokenRemaining(users); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
 
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(users)
@@ -368,6 +381,12 @@ func GetUser(c *gin.Context) {
 	if !canManageTargetRole(myRole, user.Role) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
 		return
+	}
+	if myRole == common.RoleRootUser {
+		if err := populateTodayDailyTokenRemaining([]*model.User{user}); err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
 	user.AdminPermissions = authz.Capabilities(user.Id, user.Role)
 	c.JSON(http.StatusOK, gin.H{
@@ -474,6 +493,10 @@ func GetSelf(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if err := populateTodayDailyTokenRemaining([]*model.User{user}); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	// Hide admin remarks: set to empty to trigger omitempty tag, ensuring the remark field is not included in JSON returned to regular users
 	user.Remark = ""
 
@@ -512,6 +535,8 @@ func GetSelf(c *gin.Context) {
 		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
 		"permissions":       permissions,                // 新增权限字段
 	}
+	responseData["daily_token_limit"] = user.DailyTokenLimit
+	responseData["daily_token_remaining"] = user.DailyTokenRemaining
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -519,6 +544,11 @@ func GetSelf(c *gin.Context) {
 		"data":    responseData,
 	})
 	return
+}
+
+func populateTodayDailyTokenRemaining(users []*model.User) error {
+	usageDate := time.Now().In(time.Local).Format(time.DateOnly)
+	return model.PopulateUsersDailyTokenRemaining(users, usageDate)
 }
 
 // 计算用户权限的辅助函数
@@ -660,6 +690,7 @@ func GetUserModels(c *gin.Context) {
 type updateUserRequest struct {
 	model.User
 	DailyTokenLimit *int64 `json:"daily_token_limit"`
+	ExpiresAt       *int64 `json:"expires_at"`
 }
 
 func UpdateUser(c *gin.Context) {
@@ -683,6 +714,10 @@ func UpdateUser(c *gin.Context) {
 		return
 	}
 	if request.DailyTokenLimit != nil && (*request.DailyTokenLimit < 0 || *request.DailyTokenLimit > model.MaxDailyTokenLimit) {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if request.ExpiresAt != nil && *request.ExpiresAt < 0 {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
@@ -715,6 +750,11 @@ func UpdateUser(c *gin.Context) {
 				return err
 			}
 		}
+		if request.ExpiresAt != nil {
+			if err := model.UpdateUserExpiresAtWithTx(tx, updatedUser.Id, *request.ExpiresAt); err != nil {
+				return err
+			}
+		}
 		touched, err := updateAdminPermissionsForUserInTx(c, tx, updatedUser.Id, originUser.Role, updatedUser.AdminPermissions)
 		authzTouched = touched
 		return err
@@ -737,6 +777,9 @@ func UpdateUser(c *gin.Context) {
 	}
 	if request.DailyTokenLimit != nil {
 		auditDetails["daily_token_limit"] = *request.DailyTokenLimit
+	}
+	if request.ExpiresAt != nil {
+		auditDetails["expires_at"] = *request.ExpiresAt
 	}
 	recordManageAuditFor(c, updatedUser.Id, "user.update", auditDetails)
 	c.JSON(http.StatusOK, gin.H{
@@ -989,6 +1032,10 @@ func CreateUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
 		return
 	}
+	if user.ExpiresAt < 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
 	if user.DisplayName == "" {
 		user.DisplayName = user.Username
 	}
@@ -1004,6 +1051,7 @@ func CreateUser(c *gin.Context) {
 		DisplayName:     user.DisplayName,
 		Role:            user.Role, // 保持管理员设置的角色
 		DailyTokenLimit: user.DailyTokenLimit,
+		ExpiresAt:       user.ExpiresAt,
 	}
 	authzTouched := false
 	if err := model.DB.Transaction(func(tx *gorm.DB) error {
@@ -1032,6 +1080,7 @@ func CreateUser(c *gin.Context) {
 		"username":          cleanUser.Username,
 		"role":              cleanUser.Role,
 		"daily_token_limit": cleanUser.DailyTokenLimit,
+		"expires_at":        cleanUser.ExpiresAt,
 	})
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
