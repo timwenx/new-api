@@ -217,6 +217,18 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
+	defer func() {
+		useChannel := c.GetStringSlice("use_channel")
+		if len(useChannel) <= 1 {
+			return
+		}
+		channelChain := strings.Trim(strings.Join(strings.Fields(fmt.Sprint(useChannel)), "->"), "[]")
+		if newAPIError == nil {
+			logger.LogInfo(c, fmt.Sprintf("重试汇总：result=success model=%s attempts=%d retries=%d channels=%s", relayInfo.OriginModelName, len(useChannel), len(useChannel)-1, channelChain))
+			return
+		}
+		logger.LogInfo(c, fmt.Sprintf("重试汇总：result=failed model=%s attempts=%d retries=%d channels=%s status=%d code=%s", relayInfo.OriginModelName, len(useChannel), len(useChannel)-1, channelChain, newAPIError.StatusCode, newAPIError.GetErrorCode()))
+	}()
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
 		relayInfo.RetryIndex = retryParam.GetRetry()
@@ -271,11 +283,6 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}
 
-	useChannel := c.GetStringSlice("use_channel")
-	if len(useChannel) > 1 {
-		retryLogStr := fmt.Sprintf("重试：%s", strings.Trim(strings.Join(strings.Fields(fmt.Sprint(useChannel)), "->"), "[]"))
-		logger.LogInfo(c, retryLogStr)
-	}
 	if newAPIError != nil {
 		gopool.Go(func() {
 			perfmetrics.RecordRelaySample(relayInfo, false, 0)

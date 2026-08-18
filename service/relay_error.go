@@ -1,6 +1,8 @@
 package service
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -25,6 +27,29 @@ func ShouldRetryRelayError(c *gin.Context, openaiErr *types.NewAPIError, retryTi
 	if openaiErr == nil {
 		return false
 	}
+	if retryTimes <= 0 {
+		return false
+	}
+	var requestContextErr error
+	if c != nil && c.Request != nil {
+		requestContextErr = c.Request.Context().Err()
+	}
+	if requestContextErr != nil || errors.Is(openaiErr, context.Canceled) {
+		reason := "request_context_canceled"
+		if errors.Is(requestContextErr, context.DeadlineExceeded) {
+			reason = "request_context_deadline_exceeded"
+		}
+		if c != nil {
+			logger.LogInfo(c, fmt.Sprintf("跳过重试：reason=%s status=%d code=%s", reason, openaiErr.StatusCode, openaiErr.GetErrorCode()))
+		}
+		return false
+	}
+	if originalChannelRetry && openaiErr.GetErrorCode() == types.ErrorCodeAuthUnavailable {
+		if c != nil {
+			logger.LogInfo(c, fmt.Sprintf("跳过重试：reason=auth_unavailable_same_channel status=%d code=%s", openaiErr.StatusCode, openaiErr.GetErrorCode()))
+		}
+		return false
+	}
 	if !originalChannelRetry && ShouldSkipRetryAfterChannelAffinityFailure(c) {
 		return false
 	}
@@ -37,9 +62,6 @@ func ShouldRetryRelayError(c *gin.Context, openaiErr *types.NewAPIError, retryTi
 		return true
 	}
 	if types.IsSkipRetryError(openaiErr) {
-		return false
-	}
-	if retryTimes <= 0 {
 		return false
 	}
 	code := openaiErr.StatusCode
