@@ -73,6 +73,7 @@ const (
 	ErrorCodeBadResponseStatusCode  ErrorCode = "bad_response_status_code"
 	ErrorCodeBadResponse            ErrorCode = "bad_response"
 	ErrorCodeBadResponseBody        ErrorCode = "bad_response_body"
+	ErrorCodeAuthUnavailable        ErrorCode = "auth_unavailable"
 	ErrorCodeEmptyResponse          ErrorCode = "empty_response"
 	ErrorCodeAwsInvokeError         ErrorCode = "aws_invoke_error"
 	ErrorCodeModelNotFound          ErrorCode = "model_not_found"
