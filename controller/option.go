@@ -295,6 +295,15 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "performance_setting.max_ips_per_user":
+		maxIPs, parseErr := strconv.ParseInt(strings.TrimSpace(option.Value.(string)), 10, 32)
+		if parseErr != nil || maxIPs < 0 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "IP 并发限制必须是 0 到 2147483647 之间的整数",
+			})
+			return
+		}
 	case "AutomaticDisableStatusCodes":
 		_, err = operation_setting.ParseHTTPStatusCodeRanges(option.Value.(string))
 		if err != nil {

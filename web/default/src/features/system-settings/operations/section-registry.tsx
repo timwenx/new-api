@@ -126,6 +126,8 @@ const OPERATIONS_SECTIONS = [
           'performance_setting.websocket_idle_timeout_minutes':
             settings['performance_setting.websocket_idle_timeout_minutes'] ??
             10,
+          'performance_setting.max_ips_per_user':
+            settings['performance_setting.max_ips_per_user'] ?? 0,
         }}
       />
     ),

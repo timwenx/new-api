@@ -26,6 +26,8 @@ type PerformanceSetting struct {
 	MonitorDiskThreshold int `json:"monitor_disk_threshold"`
 	// WebSocketIdleTimeoutMinutes 客户端 WS 无业务消息后的断开时间，0 表示禁用
 	WebSocketIdleTimeoutMinutes int `json:"websocket_idle_timeout_minutes"`
+	// MaxIPsPerUser 单个用户可同时使用的不同客户端 IP 数，0 表示不限制
+	MaxIPsPerUser int `json:"max_ips_per_user"`
 }
 
 // 默认配置
@@ -40,6 +42,7 @@ var performanceSetting = PerformanceSetting{
 	MonitorMemoryThreshold:      90,
 	MonitorDiskThreshold:        95,
 	WebSocketIdleTimeoutMinutes: 10,
+	MaxIPsPerUser:               0,
 }
 
 func init() {
@@ -70,6 +73,10 @@ func syncToCommon() {
 // GetPerformanceSetting 获取性能设置
 func GetPerformanceSetting() *PerformanceSetting {
 	return &performanceSetting
+}
+
+func GetMaxIPsPerUser() int {
+	return performanceSetting.MaxIPsPerUser
 }
 
 // UpdateAndSync 更新配置并同步到 common 包

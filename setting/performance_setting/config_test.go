@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestDefaultWebSocketIdleTimeoutMinutes(t *testing.T) {
+func TestDefaultConnectionLimits(t *testing.T) {
 	assert.Equal(t, 10, GetPerformanceSetting().WebSocketIdleTimeoutMinutes)
+	assert.Zero(t, GetPerformanceSetting().MaxIPsPerUser)
 }

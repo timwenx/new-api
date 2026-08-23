@@ -85,6 +85,7 @@ const perfSchema = z.object({
       .int()
       .min(0)
       .max(2147483647),
+    max_ips_per_user: z.coerce.number().int().min(0).max(2147483647),
   }),
 })
 
@@ -101,6 +102,7 @@ type FlatPerfDefaults = {
   'performance_setting.monitor_memory_threshold': number
   'performance_setting.monitor_disk_threshold': number
   'performance_setting.websocket_idle_timeout_minutes': number
+  'performance_setting.max_ips_per_user': number
 }
 
 const buildFormDefaults = (defaults: FlatPerfDefaults): PerfFormInput => ({
@@ -120,6 +122,7 @@ const buildFormDefaults = (defaults: FlatPerfDefaults): PerfFormInput => ({
       defaults['performance_setting.monitor_disk_threshold'],
     websocket_idle_timeout_minutes:
       defaults['performance_setting.websocket_idle_timeout_minutes'],
+    max_ips_per_user: defaults['performance_setting.max_ips_per_user'],
   },
 })
 
@@ -142,6 +145,8 @@ const normalizeFormValues = (values: PerfFormValues): FlatPerfDefaults => ({
     values.performance_setting.monitor_disk_threshold,
   'performance_setting.websocket_idle_timeout_minutes':
     values.performance_setting.websocket_idle_timeout_minutes,
+  'performance_setting.max_ips_per_user':
+    values.performance_setting.max_ips_per_user,
 })
 
 function formatBytes(bytes: number, decimals = 2): string {
@@ -614,6 +619,30 @@ export function PerformanceSection(props: Props) {
                   <FormDescription>
                     {t(
                       'Disconnects client WebSockets with no application messages. Ping/Pong heartbeats do not reset the timer. 0 = disabled.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='performance_setting.max_ips_per_user'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Maximum concurrent IPs per user')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={0}
+                      max={2147483647}
+                      step={1}
+                      {...safeNumberFieldProps(field)}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Limits how many distinct client IPs one user can use at the same time. Multiple active requests from the same IP count once. 0 = unlimited.'
                     )}
                   </FormDescription>
                   <FormMessage />
