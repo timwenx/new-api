@@ -14,8 +14,10 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/useriplimit"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
@@ -475,6 +477,21 @@ func TokenAuth() func(c *gin.Context) {
 		if err != nil {
 			return
 		}
+		maxIPs := performance_setting.GetMaxIPsPerUser()
+		clientIP := c.ClientIP()
+		if parsedIP := net.ParseIP(clientIP); parsedIP != nil {
+			clientIP = parsedIP.String()
+		}
+		releaseIP, allowed := useriplimit.Acquire(token.UserId, clientIP, maxIPs)
+		if !allowed {
+			abortWithOpenAiMessage(
+				c,
+				http.StatusTooManyRequests,
+				fmt.Sprintf("IP 并发限制拦截：同一用户同时使用的 IP 数已达到设置上限 %d", maxIPs),
+			)
+			return
+		}
+		defer releaseIP()
 		c.Next()
 	}
 }
