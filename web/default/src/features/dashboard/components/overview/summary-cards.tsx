@@ -170,6 +170,11 @@ export function SummaryCards() {
     0,
     Number(currentUser?.daily_token_remaining ?? 0)
   )
+  const weeklyTokenLimit = Number(currentUser?.weekly_token_limit ?? 0)
+  const weeklyTokenRemaining = Math.max(
+    0,
+    Number(currentUser?.weekly_token_remaining ?? 0)
+  )
 
   const usageTrendQuery = useQuery({
     queryKey: [
@@ -367,19 +372,47 @@ export function SummaryCards() {
                 </div>
               </div>
             </div>
-            {dailyTokenLimit > 0 && (
-              <div className='bg-background/60 rounded-lg px-2.5 py-2'>
-                <div className='text-muted-foreground flex items-center gap-1 text-[11px] leading-none font-medium'>
-                  <Gauge className='size-3 shrink-0' aria-hidden='true' />
-                  <span className='truncate'>
-                    {t('Daily Remaining Tokens')}
-                  </span>
-                </div>
-                {selfQuery.isLoading ? (
-                  <Skeleton className='mt-1.5 h-4 w-20' />
-                ) : (
-                  <div className='text-foreground mt-1.5 truncate text-xs font-semibold tabular-nums'>
-                    {formatNumber(dailyTokenRemaining)}
+            {(dailyTokenLimit > 0 || weeklyTokenLimit > 0) && (
+              <div
+                className={cn(
+                  'grid gap-2',
+                  dailyTokenLimit > 0 && weeklyTokenLimit > 0
+                    ? 'grid-cols-2'
+                    : 'grid-cols-1'
+                )}
+              >
+                {dailyTokenLimit > 0 && (
+                  <div className='bg-background/60 rounded-lg px-2.5 py-2'>
+                    <div className='text-muted-foreground flex items-center gap-1 text-[11px] leading-none font-medium'>
+                      <Gauge className='size-3 shrink-0' aria-hidden='true' />
+                      <span className='truncate'>
+                        {t('Daily Remaining Tokens')}
+                      </span>
+                    </div>
+                    {selfQuery.isLoading ? (
+                      <Skeleton className='mt-1.5 h-4 w-20' />
+                    ) : (
+                      <div className='text-foreground mt-1.5 truncate text-xs font-semibold tabular-nums'>
+                        {formatNumber(dailyTokenRemaining)}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {weeklyTokenLimit > 0 && (
+                  <div className='bg-background/60 rounded-lg px-2.5 py-2'>
+                    <div className='text-muted-foreground flex items-center gap-1 text-[11px] leading-none font-medium'>
+                      <Gauge className='size-3 shrink-0' aria-hidden='true' />
+                      <span className='truncate'>
+                        {t('Weekly Remaining Tokens')}
+                      </span>
+                    </div>
+                    {selfQuery.isLoading ? (
+                      <Skeleton className='mt-1.5 h-4 w-20' />
+                    ) : (
+                      <div className='text-foreground mt-1.5 truncate text-xs font-semibold tabular-nums'>
+                        {formatNumber(weeklyTokenRemaining)}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

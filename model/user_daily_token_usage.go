@@ -77,6 +77,10 @@ func UpdateUserDailyTokenLimitWithTx(tx *gorm.DB, userId int, limit int64) error
 // ReserveUserDailyTokens atomically reserves tokens without allowing the
 // date's counter to exceed limit. A zero limit means unlimited usage.
 func ReserveUserDailyTokens(userId int, usageDate string, limit int64, tokens int64) error {
+	return reserveUserDailyTokens(DB, userId, usageDate, limit, tokens)
+}
+
+func reserveUserDailyTokens(tx *gorm.DB, userId int, usageDate string, limit int64, tokens int64) error {
 	if userId <= 0 || usageDate == "" {
 		return errors.New("invalid daily token usage identity")
 	}
@@ -94,11 +98,11 @@ func ReserveUserDailyTokens(userId int, usageDate string, limit int64, tokens in
 		UserId:    userId,
 		UsageDate: usageDate,
 	}
-	if err := DB.Clauses(clause.OnConflict{DoNothing: true}).Create(&usage).Error; err != nil {
+	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&usage).Error; err != nil {
 		return err
 	}
 
-	result := DB.Model(&UserDailyTokenUsage{}).
+	result := tx.Model(&UserDailyTokenUsage{}).
 		Where("user_id = ? AND usage_date = ?", userId, usageDate).
 		Where("used_tokens <= ?", limit-tokens).
 		UpdateColumn("used_tokens", gorm.Expr("used_tokens + ?", tokens))
@@ -114,6 +118,10 @@ func ReserveUserDailyTokens(userId int, usageDate string, limit int64, tokens in
 // AdjustUserDailyTokens settles a reservation to the actual token count or
 // releases it after a failed request. Negative adjustments cannot underflow.
 func AdjustUserDailyTokens(userId int, usageDate string, delta int64) error {
+	return adjustUserDailyTokens(DB, userId, usageDate, delta)
+}
+
+func adjustUserDailyTokens(tx *gorm.DB, userId int, usageDate string, delta int64) error {
 	if userId <= 0 || usageDate == "" {
 		return errors.New("invalid daily token usage identity")
 	}
@@ -121,7 +129,7 @@ func AdjustUserDailyTokens(userId int, usageDate string, delta int64) error {
 		return nil
 	}
 
-	query := DB.Model(&UserDailyTokenUsage{}).
+	query := tx.Model(&UserDailyTokenUsage{}).
 		Where("user_id = ? AND usage_date = ?", userId, usageDate)
 	if delta < 0 {
 		query = query.Where("used_tokens >= ?", -delta)

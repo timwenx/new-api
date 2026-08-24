@@ -120,6 +120,7 @@ type RelayInfo struct {
 	UserEmail              string
 	UserQuota              int
 	DailyTokenLimit        int64
+	WeeklyTokenLimit       int64
 	RelayFormat            types.RelayFormat
 	SendResponseCount      int
 	ReceivedResponseCount  int
@@ -131,8 +132,9 @@ type RelayInfo struct {
 	// Billing 是计费会话，封装了预扣费/结算/退款的统一生命周期。
 	// 免费模型时为 nil。
 	Billing BillingSettler
-	// DailyTokens is the account-level daily token reservation for this request.
-	// It applies independently of wallet/subscription billing, including free models.
+	// DailyTokens is the account-level daily and weekly token reservation for
+	// this request. It applies independently of wallet/subscription billing,
+	// including free models.
 	DailyTokens DailyTokenSettler
 	// BillingSource indicates whether this request is billed from wallet quota or subscription.
 	// "" or "wallet" => wallet; "subscription" => subscription
@@ -475,16 +477,18 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		reqId = common.NewRequestId()
 	}
 	dailyTokenLimit, _ := common.GetContextKeyType[int64](c, constant.ContextKeyUserDailyTokenLimit)
+	weeklyTokenLimit, _ := common.GetContextKeyType[int64](c, constant.ContextKeyUserWeeklyTokenLimit)
 	info := &RelayInfo{
 		Request: request,
 
-		RequestId:       reqId,
-		UserId:          common.GetContextKeyInt(c, constant.ContextKeyUserId),
-		UsingGroup:      common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
-		UserGroup:       common.GetContextKeyString(c, constant.ContextKeyUserGroup),
-		UserQuota:       common.GetContextKeyInt(c, constant.ContextKeyUserQuota),
-		UserEmail:       common.GetContextKeyString(c, constant.ContextKeyUserEmail),
-		DailyTokenLimit: dailyTokenLimit,
+		RequestId:        reqId,
+		UserId:           common.GetContextKeyInt(c, constant.ContextKeyUserId),
+		UsingGroup:       common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
+		UserGroup:        common.GetContextKeyString(c, constant.ContextKeyUserGroup),
+		UserQuota:        common.GetContextKeyInt(c, constant.ContextKeyUserQuota),
+		UserEmail:        common.GetContextKeyString(c, constant.ContextKeyUserEmail),
+		DailyTokenLimit:  dailyTokenLimit,
+		WeeklyTokenLimit: weeklyTokenLimit,
 
 		OriginModelName: common.GetContextKeyString(c, constant.ContextKeyOriginalModel),
 

@@ -16,10 +16,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// DailyTokenSession owns one request's reservation on a site-local date.
+// DailyTokenSession owns one request's daily and weekly token reservations.
 type DailyTokenSession struct {
 	userId         int
 	usageDate      string
+	weekStart      string
+	dailyEnabled   bool
+	weeklyEnabled  bool
 	reservedTokens int64
 	settled        bool
 	refunded       bool
@@ -33,10 +36,10 @@ func (s *DailyTokenSession) Settle(actualTokens int) error {
 		return nil
 	}
 	if actualTokens < 0 {
-		return errors.New("actual daily token usage cannot be negative")
+		return errors.New("actual token usage cannot be negative")
 	}
 	delta := int64(actualTokens) - s.reservedTokens
-	if err := model.AdjustUserDailyTokens(s.userId, s.usageDate, delta); err != nil {
+	if err := model.AdjustUserTokenLimits(s.userId, s.usageDate, s.weekStart, s.dailyEnabled, s.weeklyEnabled, delta); err != nil {
 		return err
 	}
 	s.settled = true
@@ -49,7 +52,7 @@ func (s *DailyTokenSession) Refund() error {
 	if s.settled || s.refunded {
 		return nil
 	}
-	if err := model.AdjustUserDailyTokens(s.userId, s.usageDate, -s.reservedTokens); err != nil {
+	if err := model.AdjustUserTokenLimits(s.userId, s.usageDate, s.weekStart, s.dailyEnabled, s.weeklyEnabled, -s.reservedTokens); err != nil {
 		return err
 	}
 	s.refunded = true
@@ -74,16 +77,24 @@ func dailyTokenReservationTokens(promptTokens int, maxOutputTokens int) int64 {
 	return fallback
 }
 
-// PreConsumeDailyTokens reserves the request's estimated maximum usage before
-// it reaches an upstream channel. The settled count is corrected to actual
-// input + output tokens after a successful response.
+// PreConsumeDailyTokens reserves the request's estimated maximum usage against
+// enabled daily and weekly limits before it reaches an upstream channel. The
+// settled count is corrected to actual input + output tokens after success.
 func PreConsumeDailyTokens(relayInfo *relaycommon.RelayInfo, promptTokens int, maxOutputTokens int) *types.NewAPIError {
-	if relayInfo == nil || relayInfo.DailyTokenLimit == 0 {
+	if relayInfo == nil || (relayInfo.DailyTokenLimit == 0 && relayInfo.WeeklyTokenLimit == 0) {
 		return nil
 	}
 	if relayInfo.DailyTokenLimit < 0 || relayInfo.DailyTokenLimit > model.MaxDailyTokenLimit {
 		return types.NewErrorWithStatusCode(
 			fmt.Errorf("invalid daily token limit: %d", relayInfo.DailyTokenLimit),
+			types.ErrorCodeInvalidRequest,
+			http.StatusBadRequest,
+			types.ErrOptionWithSkipRetry(),
+		)
+	}
+	if relayInfo.WeeklyTokenLimit < 0 || relayInfo.WeeklyTokenLimit > model.MaxWeeklyTokenLimit {
+		return types.NewErrorWithStatusCode(
+			fmt.Errorf("invalid weekly token limit: %d", relayInfo.WeeklyTokenLimit),
 			types.ErrorCodeInvalidRequest,
 			http.StatusBadRequest,
 			types.ErrOptionWithSkipRetry(),
@@ -96,11 +107,28 @@ func PreConsumeDailyTokens(relayInfo *relaycommon.RelayInfo, promptTokens int, m
 		requestTime = time.Now()
 	}
 	usageDate := requestTime.In(time.Local).Format(time.DateOnly)
-	err := model.ReserveUserDailyTokens(relayInfo.UserId, usageDate, relayInfo.DailyTokenLimit, reservedTokens)
+	weekStart := model.WeeklyTokenUsageStart(requestTime)
+	err := model.ReserveUserTokenLimits(
+		relayInfo.UserId,
+		usageDate,
+		weekStart,
+		relayInfo.DailyTokenLimit,
+		relayInfo.WeeklyTokenLimit,
+		reservedTokens,
+	)
 	if errors.Is(err, model.ErrDailyTokenLimitExceeded) {
 		return types.NewErrorWithStatusCode(
 			fmt.Errorf("每日 Token 使用量已达到限额（%d），将在站点时区 00:00 重置", relayInfo.DailyTokenLimit),
 			types.ErrorCodeDailyTokenLimitExceeded,
+			http.StatusTooManyRequests,
+			types.ErrOptionWithSkipRetry(),
+			types.ErrOptionWithNoRecordErrorLog(),
+		)
+	}
+	if errors.Is(err, model.ErrWeeklyTokenLimitExceeded) {
+		return types.NewErrorWithStatusCode(
+			fmt.Errorf("每周 Token 使用量已达到限额（%d），将在站点时区下周一 00:00 重置", relayInfo.WeeklyTokenLimit),
+			types.ErrorCodeWeeklyTokenLimitExceeded,
 			http.StatusTooManyRequests,
 			types.ErrOptionWithSkipRetry(),
 			types.ErrOptionWithNoRecordErrorLog(),
@@ -113,27 +141,30 @@ func PreConsumeDailyTokens(relayInfo *relaycommon.RelayInfo, promptTokens int, m
 	relayInfo.DailyTokens = &DailyTokenSession{
 		userId:         relayInfo.UserId,
 		usageDate:      usageDate,
+		weekStart:      weekStart,
+		dailyEnabled:   relayInfo.DailyTokenLimit > 0,
+		weeklyEnabled:  relayInfo.WeeklyTokenLimit > 0,
 		reservedTokens: reservedTokens,
 	}
 	return nil
 }
 
-// SettleDailyTokens replaces the reservation with the response's actual usage.
+// SettleDailyTokens replaces enabled limit reservations with the response's actual usage.
 func SettleDailyTokens(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualTokens int) {
 	if relayInfo == nil || relayInfo.DailyTokens == nil {
 		return
 	}
 	if err := relayInfo.DailyTokens.Settle(actualTokens); err != nil {
-		logger.LogError(ctx, fmt.Sprintf("error settling daily token usage: %s", err.Error()))
+		logger.LogError(ctx, fmt.Sprintf("error settling token limit usage: %s", err.Error()))
 	}
 }
 
-// RefundDailyTokens releases a reservation after a failed request.
+// RefundDailyTokens releases enabled limit reservations after a failed request.
 func RefundDailyTokens(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) {
 	if relayInfo == nil || relayInfo.DailyTokens == nil {
 		return
 	}
 	if err := relayInfo.DailyTokens.Refund(); err != nil {
-		logger.LogError(ctx, fmt.Sprintf("error refunding daily token reservation: %s", err.Error()))
+		logger.LogError(ctx, fmt.Sprintf("error refunding token limit reservation: %s", err.Error()))
 	}
 }

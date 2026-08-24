@@ -31,16 +31,17 @@ func TestUserUpdateDoesNotOverwriteAccountingFields(t *testing.T) {
 	setupUserUpdateTestState(t)
 
 	user := User{
-		Id:              1,
-		Username:        "quota-race-user",
-		Password:        "password",
-		DisplayName:     "before",
-		Status:          common.UserStatusEnabled,
-		Quota:           1000,
-		UsedQuota:       20,
-		RequestCount:    3,
-		DailyTokenLimit: 10_000,
-		ExpiresAt:       2_000_000_000,
+		Id:               1,
+		Username:         "quota-race-user",
+		Password:         "password",
+		DisplayName:      "before",
+		Status:           common.UserStatusEnabled,
+		Quota:            1000,
+		UsedQuota:        20,
+		RequestCount:     3,
+		DailyTokenLimit:  10_000,
+		WeeklyTokenLimit: 50_000,
+		ExpiresAt:        2_000_000_000,
 	}
 	require.NoError(t, DB.Create(&user).Error)
 
@@ -48,11 +49,12 @@ func TestUserUpdateDoesNotOverwriteAccountingFields(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
-		"quota":             gorm.Expr("quota - ?", 400),
-		"used_quota":        gorm.Expr("used_quota + ?", 400),
-		"request_count":     gorm.Expr("request_count + ?", 1),
-		"daily_token_limit": 20_000,
-		"expires_at":        2_100_000_000,
+		"quota":              gorm.Expr("quota - ?", 400),
+		"used_quota":         gorm.Expr("used_quota + ?", 400),
+		"request_count":      gorm.Expr("request_count + ?", 1),
+		"daily_token_limit":  20_000,
+		"weekly_token_limit": 60_000,
+		"expires_at":         2_100_000_000,
 	}).Error)
 
 	staleUser.DisplayName = "after"
@@ -65,30 +67,35 @@ func TestUserUpdateDoesNotOverwriteAccountingFields(t *testing.T) {
 	assert.Equal(t, 420, got.UsedQuota)
 	assert.Equal(t, 4, got.RequestCount)
 	assert.EqualValues(t, 20_000, got.DailyTokenLimit)
+	assert.EqualValues(t, 60_000, got.WeeklyTokenLimit)
 	assert.EqualValues(t, 2_100_000_000, got.ExpiresAt)
 }
 
-func TestUserEditPreservesDailyTokenLimitUntilExplicitlyUpdated(t *testing.T) {
+func TestUserEditPreservesTokenLimitsUntilExplicitlyUpdated(t *testing.T) {
 	setupUserUpdateTestState(t)
 
 	user := User{
-		Id:              3,
-		Username:        "daily-limit-user",
-		Password:        "password",
-		DisplayName:     "before",
-		Status:          common.UserStatusEnabled,
-		DailyTokenLimit: 10_000,
+		Id:               3,
+		Username:         "daily-limit-user",
+		Password:         "password",
+		DisplayName:      "before",
+		Status:           common.UserStatusEnabled,
+		DailyTokenLimit:  10_000,
+		WeeklyTokenLimit: 50_000,
 	}
 	require.NoError(t, DB.Create(&user).Error)
 
 	user.DisplayName = "after"
 	require.NoError(t, user.EditWithTx(DB, false))
 	assert.EqualValues(t, 10_000, user.DailyTokenLimit)
+	assert.EqualValues(t, 50_000, user.WeeklyTokenLimit)
 
 	require.NoError(t, UpdateUserDailyTokenLimitWithTx(DB, user.Id, 20_000))
+	require.NoError(t, UpdateUserWeeklyTokenLimitWithTx(DB, user.Id, 60_000))
 	var got User
 	require.NoError(t, DB.First(&got, user.Id).Error)
 	assert.EqualValues(t, 20_000, got.DailyTokenLimit)
+	assert.EqualValues(t, 60_000, got.WeeklyTokenLimit)
 }
 
 func TestUserEditPreservesExpirationUntilExplicitlyUpdated(t *testing.T) {
@@ -118,22 +125,29 @@ func TestUserEditPreservesExpirationUntilExplicitlyUpdated(t *testing.T) {
 	assert.Zero(t, got.ExpiresAt)
 }
 
-func TestUserExpirationIsAvailableFromUserCache(t *testing.T) {
+func TestUserExpirationAndTokenLimitsAreAvailableFromUserCache(t *testing.T) {
 	setupUserUpdateTestState(t)
 
 	user := User{
-		Id:        6,
-		Username:  "cached-expiration-user",
-		Password:  "password",
-		Status:    common.UserStatusEnabled,
-		ExpiresAt: 2_000_000_000,
+		Id:               6,
+		Username:         "cached-expiration-user",
+		Password:         "password",
+		Status:           common.UserStatusEnabled,
+		DailyTokenLimit:  10_000,
+		WeeklyTokenLimit: 50_000,
+		ExpiresAt:        2_000_000_000,
 	}
 	require.NoError(t, DB.Create(&user).Error)
 
 	cachedUser, err := GetUserCache(user.Id)
 	require.NoError(t, err)
 	assert.Equal(t, user.ExpiresAt, cachedUser.ExpiresAt)
-	assert.Equal(t, user.ExpiresAt, user.ToBaseUser().ExpiresAt)
+	assert.Equal(t, user.DailyTokenLimit, cachedUser.DailyTokenLimit)
+	assert.Equal(t, user.WeeklyTokenLimit, cachedUser.WeeklyTokenLimit)
+	baseUser := user.ToBaseUser()
+	assert.Equal(t, user.ExpiresAt, baseUser.ExpiresAt)
+	assert.Equal(t, user.DailyTokenLimit, baseUser.DailyTokenLimit)
+	assert.Equal(t, user.WeeklyTokenLimit, baseUser.WeeklyTokenLimit)
 }
 
 func TestUserExpirationTreatsMigratedNullAsPermanent(t *testing.T) {
@@ -168,6 +182,23 @@ func TestUserDailyTokenLimitTreatsMigratedNullAsUnlimited(t *testing.T) {
 	got, err := GetUserById(user.Id, false)
 	require.NoError(t, err)
 	assert.Zero(t, got.DailyTokenLimit)
+}
+
+func TestUserWeeklyTokenLimitTreatsMigratedNullAsUnlimited(t *testing.T) {
+	setupUserUpdateTestState(t)
+
+	user := User{
+		Id:       8,
+		Username: "migrated-weekly-limit-user",
+		Password: "password",
+		Status:   common.UserStatusEnabled,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).UpdateColumn("weekly_token_limit", nil).Error)
+
+	got, err := GetUserById(user.Id, false)
+	require.NoError(t, err)
+	assert.Zero(t, got.WeeklyTokenLimit)
 }
 
 func TestUpdateUserSettingOnlyUpdatesSetting(t *testing.T) {

@@ -315,7 +315,7 @@ func GetAllUsers(c *gin.Context) {
 		return
 	}
 	if c.GetInt("role") == common.RoleRootUser {
-		if err := populateTodayDailyTokenRemaining(users); err != nil {
+		if err := populateCurrentTokenRemaining(users); err != nil {
 			common.ApiError(c, err)
 			return
 		}
@@ -350,7 +350,7 @@ func SearchUsers(c *gin.Context) {
 		return
 	}
 	if c.GetInt("role") == common.RoleRootUser {
-		if err := populateTodayDailyTokenRemaining(users); err != nil {
+		if err := populateCurrentTokenRemaining(users); err != nil {
 			common.ApiError(c, err)
 			return
 		}
@@ -383,7 +383,7 @@ func GetUser(c *gin.Context) {
 		return
 	}
 	if myRole == common.RoleRootUser {
-		if err := populateTodayDailyTokenRemaining([]*model.User{user}); err != nil {
+		if err := populateCurrentTokenRemaining([]*model.User{user}); err != nil {
 			common.ApiError(c, err)
 			return
 		}
@@ -493,7 +493,7 @@ func GetSelf(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	if err := populateTodayDailyTokenRemaining([]*model.User{user}); err != nil {
+	if err := populateCurrentTokenRemaining([]*model.User{user}); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -537,6 +537,8 @@ func GetSelf(c *gin.Context) {
 	}
 	responseData["daily_token_limit"] = user.DailyTokenLimit
 	responseData["daily_token_remaining"] = user.DailyTokenRemaining
+	responseData["weekly_token_limit"] = user.WeeklyTokenLimit
+	responseData["weekly_token_remaining"] = user.WeeklyTokenRemaining
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -546,9 +548,13 @@ func GetSelf(c *gin.Context) {
 	return
 }
 
-func populateTodayDailyTokenRemaining(users []*model.User) error {
-	usageDate := time.Now().In(time.Local).Format(time.DateOnly)
-	return model.PopulateUsersDailyTokenRemaining(users, usageDate)
+func populateCurrentTokenRemaining(users []*model.User) error {
+	now := time.Now()
+	usageDate := now.In(time.Local).Format(time.DateOnly)
+	if err := model.PopulateUsersDailyTokenRemaining(users, usageDate); err != nil {
+		return err
+	}
+	return model.PopulateUsersWeeklyTokenRemaining(users, model.WeeklyTokenUsageStart(now))
 }
 
 // 计算用户权限的辅助函数
@@ -689,8 +695,9 @@ func GetUserModels(c *gin.Context) {
 
 type updateUserRequest struct {
 	model.User
-	DailyTokenLimit *int64 `json:"daily_token_limit"`
-	ExpiresAt       *int64 `json:"expires_at"`
+	DailyTokenLimit  *int64 `json:"daily_token_limit"`
+	WeeklyTokenLimit *int64 `json:"weekly_token_limit"`
+	ExpiresAt        *int64 `json:"expires_at"`
 }
 
 func UpdateUser(c *gin.Context) {
@@ -714,6 +721,10 @@ func UpdateUser(c *gin.Context) {
 		return
 	}
 	if request.DailyTokenLimit != nil && (*request.DailyTokenLimit < 0 || *request.DailyTokenLimit > model.MaxDailyTokenLimit) {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if request.WeeklyTokenLimit != nil && (*request.WeeklyTokenLimit < 0 || *request.WeeklyTokenLimit > model.MaxWeeklyTokenLimit) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
@@ -750,6 +761,11 @@ func UpdateUser(c *gin.Context) {
 				return err
 			}
 		}
+		if request.WeeklyTokenLimit != nil {
+			if err := model.UpdateUserWeeklyTokenLimitWithTx(tx, updatedUser.Id, *request.WeeklyTokenLimit); err != nil {
+				return err
+			}
+		}
 		if request.ExpiresAt != nil {
 			if err := model.UpdateUserExpiresAtWithTx(tx, updatedUser.Id, *request.ExpiresAt); err != nil {
 				return err
@@ -777,6 +793,9 @@ func UpdateUser(c *gin.Context) {
 	}
 	if request.DailyTokenLimit != nil {
 		auditDetails["daily_token_limit"] = *request.DailyTokenLimit
+	}
+	if request.WeeklyTokenLimit != nil {
+		auditDetails["weekly_token_limit"] = *request.WeeklyTokenLimit
 	}
 	if request.ExpiresAt != nil {
 		auditDetails["expires_at"] = *request.ExpiresAt
@@ -1046,12 +1065,13 @@ func CreateUser(c *gin.Context) {
 	}
 	// Even for admin users, we cannot fully trust them!
 	cleanUser := model.User{
-		Username:        user.Username,
-		Password:        user.Password,
-		DisplayName:     user.DisplayName,
-		Role:            user.Role, // 保持管理员设置的角色
-		DailyTokenLimit: user.DailyTokenLimit,
-		ExpiresAt:       user.ExpiresAt,
+		Username:         user.Username,
+		Password:         user.Password,
+		DisplayName:      user.DisplayName,
+		Role:             user.Role, // 保持管理员设置的角色
+		DailyTokenLimit:  user.DailyTokenLimit,
+		WeeklyTokenLimit: user.WeeklyTokenLimit,
+		ExpiresAt:        user.ExpiresAt,
 	}
 	authzTouched := false
 	if err := model.DB.Transaction(func(tx *gorm.DB) error {
@@ -1077,10 +1097,11 @@ func CreateUser(c *gin.Context) {
 	}
 
 	recordManageAuditFor(c, cleanUser.Id, "user.create", map[string]interface{}{
-		"username":          cleanUser.Username,
-		"role":              cleanUser.Role,
-		"daily_token_limit": cleanUser.DailyTokenLimit,
-		"expires_at":        cleanUser.ExpiresAt,
+		"username":           cleanUser.Username,
+		"role":               cleanUser.Role,
+		"daily_token_limit":  cleanUser.DailyTokenLimit,
+		"weekly_token_limit": cleanUser.WeeklyTokenLimit,
+		"expires_at":         cleanUser.ExpiresAt,
 	})
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

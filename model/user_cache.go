@@ -15,15 +15,16 @@ import (
 
 // UserBase struct remains the same as it represents the cached data structure
 type UserBase struct {
-	Id              int    `json:"id"`
-	Group           string `json:"group"`
-	Email           string `json:"email"`
-	Quota           int    `json:"quota"`
-	Status          int    `json:"status"`
-	Username        string `json:"username"`
-	Setting         string `json:"setting"`
-	DailyTokenLimit int64  `json:"daily_token_limit"`
-	ExpiresAt       int64  `json:"expires_at"`
+	Id               int    `json:"id"`
+	Group            string `json:"group"`
+	Email            string `json:"email"`
+	Quota            int    `json:"quota"`
+	Status           int    `json:"status"`
+	Username         string `json:"username"`
+	Setting          string `json:"setting"`
+	DailyTokenLimit  int64  `json:"daily_token_limit"`
+	WeeklyTokenLimit int64  `json:"weekly_token_limit"`
+	ExpiresAt        int64  `json:"expires_at"`
 }
 
 func (user *UserBase) WriteContext(c *gin.Context) {
@@ -34,6 +35,7 @@ func (user *UserBase) WriteContext(c *gin.Context) {
 	common.SetContextKey(c, constant.ContextKeyUserName, user.Username)
 	common.SetContextKey(c, constant.ContextKeyUserSetting, user.GetSetting())
 	common.SetContextKey(c, constant.ContextKeyUserDailyTokenLimit, user.DailyTokenLimit)
+	common.SetContextKey(c, constant.ContextKeyUserWeeklyTokenLimit, user.WeeklyTokenLimit)
 }
 
 func (user *UserBase) GetSetting() dto.UserSetting {
@@ -130,15 +132,16 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 
 	// Create cache object from user data
 	userCache = &UserBase{
-		Id:              user.Id,
-		Group:           user.Group,
-		Quota:           user.Quota,
-		Status:          user.Status,
-		Username:        user.Username,
-		Setting:         user.Setting,
-		Email:           user.Email,
-		DailyTokenLimit: user.DailyTokenLimit,
-		ExpiresAt:       user.ExpiresAt,
+		Id:               user.Id,
+		Group:            user.Group,
+		Quota:            user.Quota,
+		Status:           user.Status,
+		Username:         user.Username,
+		Setting:          user.Setting,
+		Email:            user.Email,
+		DailyTokenLimit:  user.DailyTokenLimit,
+		WeeklyTokenLimit: user.WeeklyTokenLimit,
+		ExpiresAt:        user.ExpiresAt,
 	}
 
 	return userCache, nil

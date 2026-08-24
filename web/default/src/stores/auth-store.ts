@@ -39,6 +39,8 @@ export interface AuthUser {
   request_count?: number
   daily_token_limit?: number
   daily_token_remaining?: number
+  weekly_token_limit?: number
+  weekly_token_remaining?: number
   aff_code?: string
   aff_count?: number
   aff_quota?: number

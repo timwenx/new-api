@@ -267,6 +267,18 @@ export function useUsersColumns(): ColumnDef<User>[] {
             size: 180,
             meta: { mobileOrder: 50 },
           } satisfies ColumnDef<User>,
+          {
+            accessorKey: 'weekly_token_remaining',
+            header: t('Weekly Remaining Tokens'),
+            cell: ({ row }) => (
+              <span className='text-sm font-medium tabular-nums'>
+                {formatNumber(row.original.weekly_token_remaining ?? 0)}
+              </span>
+            ),
+            enableSorting: false,
+            size: 180,
+            meta: { mobileOrder: 51 },
+          } satisfies ColumnDef<User>,
         ]
       : []),
     {

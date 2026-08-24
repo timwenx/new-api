@@ -40,6 +40,7 @@ export const userFormSchema = z.object({
   role: z.number().optional(),
   quota_dollars: z.number().min(0).optional(),
   daily_token_limit: z.number().int().min(0).max(2_147_483_647),
+  weekly_token_limit: z.number().int().min(0).max(2_147_483_647),
   expires_at: z.date().optional(),
   group: z.string().optional(),
   remark: z.string().optional(),
@@ -61,6 +62,7 @@ export const USER_FORM_DEFAULT_VALUES: UserFormValues = {
   role: 1, // Default to common user
   quota_dollars: 0,
   daily_token_limit: 0,
+  weekly_token_limit: 0,
   expires_at: undefined,
   group: DEFAULT_GROUP,
   remark: '',
@@ -85,6 +87,7 @@ export function transformFormDataToPayload(
     display_name: data.display_name || data.username,
     password: data.password || undefined,
     daily_token_limit: data.daily_token_limit,
+    weekly_token_limit: data.weekly_token_limit,
     expires_at: data.expires_at
       ? Math.floor(data.expires_at.getTime() / 1000)
       : 0,
@@ -128,6 +131,7 @@ export function transformUserToFormDefaults(user: User): UserFormValues {
     role: user.role,
     quota_dollars: quotaUnitsToDollars(user.quota),
     daily_token_limit: user.daily_token_limit || 0,
+    weekly_token_limit: user.weekly_token_limit || 0,
     expires_at:
       user.expires_at && user.expires_at > 0
         ? new Date(user.expires_at * 1000)
