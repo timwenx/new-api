@@ -28,6 +28,13 @@ func dailyTokenUsageForServiceTest(t *testing.T, userId int, usageDate string) m
 	return usage
 }
 
+func weeklyTokenUsageForServiceTest(t *testing.T, userId int, weekStart string) model.UserWeeklyTokenUsage {
+	t.Helper()
+	var usage model.UserWeeklyTokenUsage
+	require.NoError(t, model.DB.Where("user_id = ? AND week_start = ?", userId, weekStart).First(&usage).Error)
+	return usage
+}
+
 func TestPreConsumeDailyTokensSettlesActualInputAndOutputUsage(t *testing.T) {
 	truncate(t)
 
@@ -98,6 +105,36 @@ func TestPreConsumeDailyTokensReturnsRateLimitError(t *testing.T) {
 	assert.Nil(t, info.DailyTokens)
 }
 
+func TestPreConsumeWeeklyTokensSettlesActualUsage(t *testing.T) {
+	truncate(t)
+
+	info := &relaycommon.RelayInfo{
+		UserId:           305,
+		WeeklyTokenLimit: 1_000,
+		StartTime:        time.Date(2026, time.August, 7, 12, 0, 0, 0, time.Local),
+	}
+	require.Nil(t, PreConsumeDailyTokens(info, 100, 400))
+	assert.EqualValues(t, 500, weeklyTokenUsageForServiceTest(t, 305, "2026-08-03").UsedTokens)
+
+	SettleDailyTokens(dailyTokenTestContext(), info, 300)
+	assert.EqualValues(t, 300, weeklyTokenUsageForServiceTest(t, 305, "2026-08-03").UsedTokens)
+}
+
+func TestPreConsumeWeeklyTokensReturnsRateLimitError(t *testing.T) {
+	truncate(t)
+
+	info := &relaycommon.RelayInfo{
+		UserId:           306,
+		WeeklyTokenLimit: 499,
+		StartTime:        time.Date(2026, time.August, 7, 12, 0, 0, 0, time.Local),
+	}
+	apiErr := PreConsumeDailyTokens(info, 100, 400)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, types.ErrorCodeWeeklyTokenLimitExceeded, apiErr.GetErrorCode())
+	assert.Equal(t, 429, apiErr.StatusCode)
+	assert.Nil(t, info.DailyTokens)
+}
+
 func TestDailyTokenReservationUsesFallbackWhenMaxOutputIsAbsent(t *testing.T) {
 	oldPreConsumedQuota := common.PreConsumedQuota
 	common.PreConsumedQuota = 500
@@ -121,6 +158,22 @@ func TestEstimateRequestTokenStillCountsForDailyLimitWhenGlobalCountingIsDisable
 		dailyTokenTestContext(),
 		&types.TokenCountMeta{TokenType: types.TokenTypeTextNumber, CombineText: "每日限额"},
 		&relaycommon.RelayInfo{DailyTokenLimit: 1_000},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, 4, tokens)
+}
+
+func TestEstimateRequestTokenStillCountsForWeeklyLimitWhenGlobalCountingIsDisabled(t *testing.T) {
+	oldCountToken := constant.CountToken
+	constant.CountToken = false
+	t.Cleanup(func() {
+		constant.CountToken = oldCountToken
+	})
+
+	tokens, err := EstimateRequestToken(
+		dailyTokenTestContext(),
+		&types.TokenCountMeta{TokenType: types.TokenTypeTextNumber, CombineText: "每周限额"},
+		&relaycommon.RelayInfo{WeeklyTokenLimit: 1_000},
 	)
 	require.NoError(t, err)
 	assert.Equal(t, 4, tokens)

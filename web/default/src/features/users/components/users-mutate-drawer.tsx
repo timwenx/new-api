@@ -385,6 +385,38 @@ export function UsersMutateDrawer({
 
                 <FormField
                   control={form.control}
+                  name='weekly_token_limit'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Weekly Token Limit')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          type='number'
+                          min={0}
+                          max={2_147_483_647}
+                          step={1}
+                          value={field.value}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          ref={field.ref}
+                          onChange={(event) => {
+                            const value = event.target.valueAsNumber
+                            field.onChange(Number.isNaN(value) ? 0 : value)
+                          }}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          '0 means unlimited. Resets weekly on Monday at 00:00 (site timezone).'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
                   name='expires_at'
                   render={({ field }) => (
                     <FormItem>
