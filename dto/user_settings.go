@@ -13,6 +13,7 @@ type UserSetting struct {
 	UpstreamModelUpdateNotifyEnabled bool    `json:"upstream_model_update_notify_enabled,omitempty"` // 是否接收上游模型更新定时检测通知（仅管理员）
 	AcceptUnsetRatioModel            bool    `json:"accept_unset_model_ratio_model,omitempty"`       // AcceptUnsetRatioModel 是否接受未设置价格的模型
 	RecordIpLog                      *bool   `json:"record_ip_log,omitempty"`                        // 是否记录请求和错误日志IP，未设置时默认记录
+	IPLimitEnabled                   *bool   `json:"ip_limit_enabled,omitempty"`                     // 是否应用用户并发IP限制，未设置时默认应用
 	SidebarModules                   string  `json:"sidebar_modules,omitempty"`                      // SidebarModules 左侧边栏模块配置
 	BillingPreference                string  `json:"billing_preference,omitempty"`                   // BillingPreference 扣费策略（订阅/钱包）
 	Language                         string  `json:"language,omitempty"`                             // Language 用户语言偏好 (zh, en)
@@ -23,6 +24,12 @@ type UserSetting struct {
 // the secure default of recording request IPs.
 func (setting UserSetting) ShouldRecordIpLog() bool {
 	return setting.RecordIpLog == nil || *setting.RecordIpLog
+}
+
+// ShouldApplyIPLimit returns the effective concurrent IP limit setting.
+// Existing users do not have this field, so an omitted value keeps the limit enabled.
+func (setting UserSetting) ShouldApplyIPLimit() bool {
+	return setting.IPLimitEnabled == nil || *setting.IPLimitEnabled
 }
 
 var (

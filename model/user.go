@@ -56,6 +56,7 @@ type User struct {
 	CreatedAt        int64                      `json:"created_at" gorm:"autoCreateTime;column:created_at"`
 	LastLoginAt      int64                      `json:"last_login_at" gorm:"default:0;column:last_login_at"`
 	AdminPermissions map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
+	IPLimitEnabled   *bool                      `json:"ip_limit_enabled,omitempty" gorm:"-:all"`
 
 	DailyTokenRemaining  int64 `json:"daily_token_remaining" gorm:"-:all"`
 	WeeklyTokenRemaining int64 `json:"weekly_token_remaining" gorm:"-:all"`
@@ -109,6 +110,19 @@ func (user *User) SetSetting(setting dto.UserSetting) {
 }
 
 func UpdateUserSetting(userId int, setting dto.UserSetting) error {
+	if err := UpdateUserSettingWithTx(DB, userId, setting); err != nil {
+		return err
+	}
+	settingBytes, err := common.Marshal(setting)
+	if err != nil {
+		return err
+	}
+	return updateUserSettingCache(userId, string(settingBytes))
+}
+
+// UpdateUserSettingWithTx updates user settings inside the caller's transaction.
+// The caller must refresh or invalidate the user cache after the transaction commits.
+func UpdateUserSettingWithTx(tx *gorm.DB, userId int, setting dto.UserSetting) error {
 	if userId == 0 {
 		return errors.New("id 为空！")
 	}
@@ -117,10 +131,7 @@ func UpdateUserSetting(userId int, setting dto.UserSetting) error {
 		return err
 	}
 	settingValue := string(settingBytes)
-	if err = DB.Model(&User{}).Where("id = ?", userId).Update("setting", settingValue).Error; err != nil {
-		return err
-	}
-	return updateUserSettingCache(userId, settingValue)
+	return tx.Model(&User{}).Where("id = ?", userId).Update("setting", settingValue).Error
 }
 
 // 根据用户角色生成默认的边栏配置

@@ -31,6 +31,7 @@ import {
   sideDrawerFooterClassName,
   sideDrawerFormClassName,
   sideDrawerHeaderClassName,
+  sideDrawerSwitchItemClassName,
 } from '@/components/drawer-layout'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -62,6 +63,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import {
   ADMIN_PERMISSION_ACTIONS,
@@ -411,6 +413,31 @@ export function UsersMutateDrawer({
                         )}
                       </FormDescription>
                       <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='ip_limit_enabled'
+                  render={({ field }) => (
+                    <FormItem className={sideDrawerSwitchItemClassName()}>
+                      <div className='flex flex-col gap-0.5'>
+                        <FormLabel className='!mt-0'>
+                          {t('Apply Concurrent IP Limit')}
+                        </FormLabel>
+                        <FormDescription>
+                          {t(
+                            'Limit this user to the global maximum number of concurrent IP addresses. Disable for users behind rotating proxies.'
+                          )}
+                        </FormDescription>
+                      </div>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
                     </FormItem>
                   )}
                 />
