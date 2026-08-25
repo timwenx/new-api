@@ -11,6 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
@@ -475,6 +476,15 @@ func TokenAuth() func(c *gin.Context) {
 
 		err = SetupContextForToken(c, token, parts...)
 		if err != nil {
+			return
+		}
+		if c.Request.Method == http.MethodGet && c.Request.URL.Path == "/v1/models" {
+			c.Next()
+			return
+		}
+		userSetting, _ := common.GetContextKeyType[dto.UserSetting](c, constant.ContextKeyUserSetting)
+		if !userSetting.ShouldApplyIPLimit() {
+			c.Next()
 			return
 		}
 		maxIPs := performance_setting.GetMaxIPsPerUser()

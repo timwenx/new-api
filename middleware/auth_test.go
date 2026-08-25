@@ -4,11 +4,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -104,6 +106,143 @@ func TestUserExpirationAuthRejectsExpiredUserBeforeHandler(t *testing.T) {
 	assert.False(t, handlerCalled)
 	assert.Equal(t, http.StatusForbidden, recorder.Code)
 	assert.Contains(t, recorder.Body.String(), string(types.ErrorCodeInsufficientUserQuota))
+}
+
+func TestTokenAuthAppliesConcurrentIPPolicy(t *testing.T) {
+	dsn := "file:" + strings.ReplaceAll(t.Name(), "/", "_") + "?mode=memory&cache=shared"
+	originalDB := model.DB
+	originalRedisEnabled := common.RedisEnabled
+	originalMaxIPs := performance_setting.GetPerformanceSetting().MaxIPsPerUser
+	originalIsMasterNode := common.IsMasterNode
+	originalSQLitePath := common.SQLitePath
+	originalMainDatabaseType := common.MainDatabaseType()
+	originalLogDatabaseType := common.LogDatabaseType()
+	common.IsMasterNode = false
+	common.SQLitePath = dsn
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	t.Setenv("SQL_DSN", "local")
+	require.NoError(t, model.InitDB())
+	db := model.DB
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}))
+
+	common.RedisEnabled = false
+	performance_setting.GetPerformanceSetting().MaxIPsPerUser = 1
+	t.Cleanup(func() {
+		sqlDB, dbErr := db.DB()
+		if dbErr == nil {
+			_ = sqlDB.Close()
+		}
+		model.DB = originalDB
+		common.RedisEnabled = originalRedisEnabled
+		performance_setting.GetPerformanceSetting().MaxIPsPerUser = originalMaxIPs
+		common.IsMasterNode = originalIsMasterNode
+		common.SQLitePath = originalSQLitePath
+		common.SetDatabaseTypes(originalMainDatabaseType, originalLogDatabaseType)
+	})
+
+	user := model.User{
+		Username: "model-list-ip-limit-user",
+		Password: "password",
+		Status:   common.UserStatusEnabled,
+		Quota:    1000,
+		Group:    "default",
+	}
+	require.NoError(t, db.Create(&user).Error)
+	token := model.Token{
+		UserId:         user.Id,
+		Key:            "modellistiplimitkey",
+		Status:         common.TokenStatusEnabled,
+		Name:           "model-list-ip-limit-token",
+		ExpiredTime:    -1,
+		UnlimitedQuota: true,
+	}
+	require.NoError(t, db.Create(&token).Error)
+
+	gin.SetMode(gin.TestMode)
+	limitedEntered := make(chan struct{})
+	limitedUnblock := make(chan struct{})
+	disabledEntered := make(chan struct{})
+	disabledUnblock := make(chan struct{})
+	var responseHandlerCalls atomic.Int32
+	router := gin.New()
+	router.Use(TokenAuth())
+	router.POST("/v1/responses", func(c *gin.Context) {
+		switch responseHandlerCalls.Add(1) {
+		case 1:
+			close(limitedEntered)
+			<-limitedUnblock
+		case 2:
+			close(disabledEntered)
+			<-disabledUnblock
+		}
+		c.Status(http.StatusOK)
+	})
+	router.GET("/v1/models", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	firstDone := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+		request.Header.Set("Authorization", "Bearer sk-"+token.Key)
+		request.RemoteAddr = "203.0.113.1:12345"
+		router.ServeHTTP(recorder, request)
+		firstDone <- recorder
+	}()
+	select {
+	case <-limitedEntered:
+	case recorder := <-firstDone:
+		require.Failf(t, "first request did not reach handler", "status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	modelsRecorder := httptest.NewRecorder()
+	modelsRequest := httptest.NewRequest(http.MethodGet, "/v1/models?client_version=test", nil)
+	modelsRequest.Header.Set("Authorization", "Bearer sk-"+token.Key)
+	modelsRequest.RemoteAddr = "198.51.100.2:12345"
+	router.ServeHTTP(modelsRecorder, modelsRequest)
+
+	responsesRecorder := httptest.NewRecorder()
+	responsesRequest := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	responsesRequest.Header.Set("Authorization", "Bearer sk-"+token.Key)
+	responsesRequest.RemoteAddr = "198.51.100.2:12345"
+	router.ServeHTTP(responsesRecorder, responsesRequest)
+
+	close(limitedUnblock)
+	assert.Equal(t, http.StatusOK, (<-firstDone).Code)
+	assert.Equal(t, http.StatusOK, modelsRecorder.Code)
+	assert.Equal(t, http.StatusTooManyRequests, responsesRecorder.Code)
+
+	disabled := false
+	userSetting := user.GetSetting()
+	userSetting.IPLimitEnabled = &disabled
+	require.NoError(t, model.UpdateUserSetting(user.Id, userSetting))
+
+	disabledFirstDone := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+		request.Header.Set("Authorization", "Bearer sk-"+token.Key)
+		request.RemoteAddr = "203.0.113.1:12345"
+		router.ServeHTTP(recorder, request)
+		disabledFirstDone <- recorder
+	}()
+	select {
+	case <-disabledEntered:
+	case recorder := <-disabledFirstDone:
+		require.Failf(t, "disabled-limit request did not reach handler", "status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	disabledSecondRecorder := httptest.NewRecorder()
+	disabledSecondRequest := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	disabledSecondRequest.Header.Set("Authorization", "Bearer sk-"+token.Key)
+	disabledSecondRequest.RemoteAddr = "198.51.100.2:12345"
+	router.ServeHTTP(disabledSecondRecorder, disabledSecondRequest)
+
+	close(disabledUnblock)
+	assert.Equal(t, http.StatusOK, (<-disabledFirstDone).Code)
+	assert.Equal(t, http.StatusOK, disabledSecondRecorder.Code)
+	assert.Equal(t, int32(3), responseHandlerCalls.Load())
 }
 
 func TestAPIKeyFromWebSocketSubprotocol(t *testing.T) {

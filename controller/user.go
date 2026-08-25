@@ -388,6 +388,8 @@ func GetUser(c *gin.Context) {
 			return
 		}
 	}
+	ipLimitEnabled := user.GetSetting().ShouldApplyIPLimit()
+	user.IPLimitEnabled = &ipLimitEnabled
 	user.AdminPermissions = authz.Capabilities(user.Id, user.Role)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -750,11 +752,23 @@ func UpdateUser(c *gin.Context) {
 	if updatedUser.Password == "$I_LOVE_U" {
 		updatedUser.Password = "" // rollback to what it should be
 	}
+	requestedIPLimitEnabled := updatedUser.IPLimitEnabled
+	var updatedSetting *dto.UserSetting
+	if requestedIPLimitEnabled != nil {
+		setting := originUser.GetSetting()
+		setting.IPLimitEnabled = requestedIPLimitEnabled
+		updatedSetting = &setting
+	}
 	updatePassword := updatedUser.Password != ""
 	authzTouched := false
 	if err := model.DB.Transaction(func(tx *gorm.DB) error {
 		if err := updatedUser.EditWithTx(tx, updatePassword); err != nil {
 			return err
+		}
+		if updatedSetting != nil {
+			if err := model.UpdateUserSettingWithTx(tx, updatedUser.Id, *updatedSetting); err != nil {
+				return err
+			}
 		}
 		if request.DailyTokenLimit != nil {
 			if err := model.UpdateUserDailyTokenLimitWithTx(tx, updatedUser.Id, *request.DailyTokenLimit); err != nil {
@@ -799,6 +813,9 @@ func UpdateUser(c *gin.Context) {
 	}
 	if request.ExpiresAt != nil {
 		auditDetails["expires_at"] = *request.ExpiresAt
+	}
+	if requestedIPLimitEnabled != nil {
+		auditDetails["ip_limit_enabled"] = *requestedIPLimitEnabled
 	}
 	recordManageAuditFor(c, updatedUser.Id, "user.update", auditDetails)
 	c.JSON(http.StatusOK, gin.H{
@@ -1073,6 +1090,9 @@ func CreateUser(c *gin.Context) {
 		WeeklyTokenLimit: user.WeeklyTokenLimit,
 		ExpiresAt:        user.ExpiresAt,
 	}
+	if user.IPLimitEnabled != nil {
+		cleanUser.SetSetting(dto.UserSetting{IPLimitEnabled: user.IPLimitEnabled})
+	}
 	authzTouched := false
 	if err := model.DB.Transaction(func(tx *gorm.DB) error {
 		if err := cleanUser.InsertWithTx(tx, 0); err != nil {
@@ -1102,6 +1122,7 @@ func CreateUser(c *gin.Context) {
 		"daily_token_limit":  cleanUser.DailyTokenLimit,
 		"weekly_token_limit": cleanUser.WeeklyTokenLimit,
 		"expires_at":         cleanUser.ExpiresAt,
+		"ip_limit_enabled":   cleanUser.GetSetting().ShouldApplyIPLimit(),
 	})
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -1528,6 +1549,7 @@ func UpdateUserSetting(c *gin.Context) {
 	existingSettings := user.GetSetting()
 	upstreamModelUpdateNotifyEnabled := existingSettings.UpstreamModelUpdateNotifyEnabled
 	recordIpLog := existingSettings.RecordIpLog
+	ipLimitEnabled := existingSettings.IPLimitEnabled
 	if user.Role >= common.RoleAdminUser && req.UpstreamModelUpdateNotifyEnabled != nil {
 		upstreamModelUpdateNotifyEnabled = *req.UpstreamModelUpdateNotifyEnabled
 	}
@@ -1542,6 +1564,7 @@ func UpdateUserSetting(c *gin.Context) {
 		UpstreamModelUpdateNotifyEnabled: upstreamModelUpdateNotifyEnabled,
 		AcceptUnsetRatioModel:            req.AcceptUnsetModelRatioModel,
 		RecordIpLog:                      recordIpLog,
+		IPLimitEnabled:                   ipLimitEnabled,
 	}
 
 	// 如果是webhook类型,添加webhook相关设置
