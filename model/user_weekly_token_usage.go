@@ -8,8 +8,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// MaxWeeklyTokenLimit keeps administrator input within the application's 32-bit accounting boundary.
-const MaxWeeklyTokenLimit int64 = MaxDailyTokenLimit
+// MaxWeeklyTokenLimit matches the largest integer the administrator UI can represent exactly.
+const MaxWeeklyTokenLimit int64 = 9_007_199_254_740_991
 
 // ErrWeeklyTokenLimitExceeded indicates that a reservation would exceed the current week's limit.
 var ErrWeeklyTokenLimitExceeded = errors.New("weekly token limit exceeded")

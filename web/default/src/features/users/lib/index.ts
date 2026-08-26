@@ -25,6 +25,7 @@ export { getUserActionMessage } from './user-actions'
 // Form Utilities
 // ============================================================================
 export {
+  MAX_WEEKLY_TOKEN_LIMIT,
   userFormSchema,
   type UserFormValues,
   USER_FORM_DEFAULT_VALUES,
