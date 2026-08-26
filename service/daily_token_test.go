@@ -105,12 +105,12 @@ func TestPreConsumeDailyTokensReturnsRateLimitError(t *testing.T) {
 	assert.Nil(t, info.DailyTokens)
 }
 
-func TestPreConsumeWeeklyTokensSettlesActualUsage(t *testing.T) {
+func TestPreConsumeWeeklyTokensSupportsBigIntLimitAndSettlesActualUsage(t *testing.T) {
 	truncate(t)
 
 	info := &relaycommon.RelayInfo{
 		UserId:           305,
-		WeeklyTokenLimit: 1_000,
+		WeeklyTokenLimit: 3_000_000_000,
 		StartTime:        time.Date(2026, time.August, 7, 12, 0, 0, 0, time.Local),
 	}
 	require.Nil(t, PreConsumeDailyTokens(info, 100, 400))

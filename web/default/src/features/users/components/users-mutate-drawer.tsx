@@ -86,6 +86,7 @@ import {
 } from '../api'
 import { BINDING_FIELDS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
+  MAX_WEEKLY_TOKEN_LIMIT,
   userFormSchema,
   type UserFormValues,
   USER_FORM_DEFAULT_VALUES,
@@ -395,7 +396,7 @@ export function UsersMutateDrawer({
                         <Input
                           type='number'
                           min={0}
-                          max={2_147_483_647}
+                          max={MAX_WEEKLY_TOKEN_LIMIT}
                           step={1}
                           value={field.value}
                           onBlur={field.onBlur}

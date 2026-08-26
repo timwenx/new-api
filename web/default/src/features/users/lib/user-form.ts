@@ -33,6 +33,8 @@ import type { UserFormData, User } from '../types'
 // Form Schema
 // ============================================================================
 
+export const MAX_WEEKLY_TOKEN_LIMIT = Number.MAX_SAFE_INTEGER
+
 export const userFormSchema = z.object({
   username: z.string().min(1, 'Username is required'),
   display_name: z.string().optional(),
@@ -40,7 +42,7 @@ export const userFormSchema = z.object({
   role: z.number().optional(),
   quota_dollars: z.number().min(0).optional(),
   daily_token_limit: z.number().int().min(0).max(2_147_483_647),
-  weekly_token_limit: z.number().int().min(0).max(2_147_483_647),
+  weekly_token_limit: z.number().int().min(0).max(MAX_WEEKLY_TOKEN_LIMIT),
   ip_limit_enabled: z.boolean(),
   expires_at: z.date().optional(),
   group: z.string().optional(),

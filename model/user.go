@@ -40,7 +40,7 @@ type User struct {
 	UsedQuota        int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
 	RequestCount     int                        `json:"request_count" gorm:"type:int;default:0;"`               // request number
 	DailyTokenLimit  int64                      `json:"daily_token_limit" gorm:"type:bigint" validate:"gte=0,lte=2147483647"`
-	WeeklyTokenLimit int64                      `json:"weekly_token_limit" gorm:"type:bigint" validate:"gte=0,lte=2147483647"`
+	WeeklyTokenLimit int64                      `json:"weekly_token_limit" gorm:"type:bigint" validate:"gte=0,lte=9007199254740991"`
 	ExpiresAt        int64                      `json:"expires_at" gorm:"type:bigint"`
 	Group            string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
 	AffCode          string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`

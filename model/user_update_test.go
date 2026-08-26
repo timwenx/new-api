@@ -98,6 +98,28 @@ func TestUserEditPreservesTokenLimitsUntilExplicitlyUpdated(t *testing.T) {
 	assert.EqualValues(t, 60_000, got.WeeklyTokenLimit)
 }
 
+func TestUserWeeklyTokenLimitSupportsValueAboveInt32(t *testing.T) {
+	setupUserUpdateTestState(t)
+
+	user := User{
+		Id:       9,
+		Username: "big-week-limit-user",
+		Password: "password",
+		Status:   common.UserStatusEnabled,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+
+	const weeklyTokenLimit int64 = 3_000_000_000
+	updatedUser := user
+	updatedUser.WeeklyTokenLimit = weeklyTokenLimit
+	require.NoError(t, common.Validate.Struct(&updatedUser))
+	require.NoError(t, UpdateUserWeeklyTokenLimitWithTx(DB, user.Id, weeklyTokenLimit))
+
+	var got User
+	require.NoError(t, DB.First(&got, user.Id).Error)
+	assert.Equal(t, weeklyTokenLimit, got.WeeklyTokenLimit)
+}
+
 func TestUserEditPreservesExpirationUntilExplicitlyUpdated(t *testing.T) {
 	setupUserUpdateTestState(t)
 
