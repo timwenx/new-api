@@ -18,15 +18,17 @@ import (
 
 // DailyTokenSession owns one request's daily and weekly token reservations.
 type DailyTokenSession struct {
-	userId         int
-	usageDate      string
-	weekStart      string
-	dailyEnabled   bool
-	weeklyEnabled  bool
-	reservedTokens int64
-	settled        bool
-	refunded       bool
-	mu             sync.Mutex
+	userId             int
+	modelName          string
+	usageDate          string
+	weekStart          string
+	dailyEnabled       bool
+	weeklyEnabled      bool
+	modelWeeklyEnabled bool
+	reservedTokens     int64
+	settled            bool
+	refunded           bool
+	mu                 sync.Mutex
 }
 
 func (s *DailyTokenSession) Settle(actualTokens int) error {
@@ -39,7 +41,7 @@ func (s *DailyTokenSession) Settle(actualTokens int) error {
 		return errors.New("actual token usage cannot be negative")
 	}
 	delta := int64(actualTokens) - s.reservedTokens
-	if err := model.AdjustUserTokenLimits(s.userId, s.usageDate, s.weekStart, s.dailyEnabled, s.weeklyEnabled, delta); err != nil {
+	if err := s.adjust(delta); err != nil {
 		return err
 	}
 	s.settled = true
@@ -52,11 +54,26 @@ func (s *DailyTokenSession) Refund() error {
 	if s.settled || s.refunded {
 		return nil
 	}
-	if err := model.AdjustUserTokenLimits(s.userId, s.usageDate, s.weekStart, s.dailyEnabled, s.weeklyEnabled, -s.reservedTokens); err != nil {
+	if err := s.adjust(-s.reservedTokens); err != nil {
 		return err
 	}
 	s.refunded = true
 	return nil
+}
+
+func (s *DailyTokenSession) adjust(delta int64) error {
+	if s.modelWeeklyEnabled {
+		return model.AdjustUserDailyAndModelWeeklyTokens(
+			s.userId,
+			s.modelName,
+			s.usageDate,
+			s.weekStart,
+			s.dailyEnabled,
+			true,
+			delta,
+		)
+	}
+	return model.AdjustUserTokenLimits(s.userId, s.usageDate, s.weekStart, s.dailyEnabled, s.weeklyEnabled, delta)
 }
 
 func dailyTokenReservationTokens(promptTokens int, maxOutputTokens int) int64 {
@@ -81,7 +98,7 @@ func dailyTokenReservationTokens(promptTokens int, maxOutputTokens int) int64 {
 // enabled daily and weekly limits before it reaches an upstream channel. The
 // settled count is corrected to actual input + output tokens after success.
 func PreConsumeDailyTokens(relayInfo *relaycommon.RelayInfo, promptTokens int, maxOutputTokens int) *types.NewAPIError {
-	if relayInfo == nil || (relayInfo.DailyTokenLimit == 0 && relayInfo.WeeklyTokenLimit == 0) {
+	if relayInfo == nil || (relayInfo.DailyTokenLimit == 0 && relayInfo.WeeklyTokenLimit == 0 && relayInfo.ModelWeeklyTokenLimit == 0) {
 		return nil
 	}
 	if relayInfo.DailyTokenLimit < 0 || relayInfo.DailyTokenLimit > model.MaxDailyTokenLimit {
@@ -100,6 +117,22 @@ func PreConsumeDailyTokens(relayInfo *relaycommon.RelayInfo, promptTokens int, m
 			types.ErrOptionWithSkipRetry(),
 		)
 	}
+	if relayInfo.ModelWeeklyTokenLimit < 0 || relayInfo.ModelWeeklyTokenLimit > model.MaxWeeklyTokenLimit {
+		return types.NewErrorWithStatusCode(
+			fmt.Errorf("invalid model weekly token limit: %d", relayInfo.ModelWeeklyTokenLimit),
+			types.ErrorCodeInvalidRequest,
+			http.StatusBadRequest,
+			types.ErrOptionWithSkipRetry(),
+		)
+	}
+	if relayInfo.ModelWeeklyTokenLimit > 0 && relayInfo.OriginModelName == "" {
+		return types.NewErrorWithStatusCode(
+			errors.New("model weekly token limit requires an original model name"),
+			types.ErrorCodeInvalidRequest,
+			http.StatusBadRequest,
+			types.ErrOptionWithSkipRetry(),
+		)
+	}
 
 	reservedTokens := dailyTokenReservationTokens(promptTokens, maxOutputTokens)
 	requestTime := relayInfo.StartTime
@@ -108,14 +141,27 @@ func PreConsumeDailyTokens(relayInfo *relaycommon.RelayInfo, promptTokens int, m
 	}
 	usageDate := requestTime.In(time.Local).Format(time.DateOnly)
 	weekStart := model.WeeklyTokenUsageStart(requestTime)
-	err := model.ReserveUserTokenLimits(
-		relayInfo.UserId,
-		usageDate,
-		weekStart,
-		relayInfo.DailyTokenLimit,
-		relayInfo.WeeklyTokenLimit,
-		reservedTokens,
-	)
+	var err error
+	if relayInfo.ModelWeeklyTokenLimit > 0 {
+		err = model.ReserveUserDailyAndModelWeeklyTokens(
+			relayInfo.UserId,
+			relayInfo.OriginModelName,
+			usageDate,
+			weekStart,
+			relayInfo.DailyTokenLimit,
+			relayInfo.ModelWeeklyTokenLimit,
+			reservedTokens,
+		)
+	} else {
+		err = model.ReserveUserTokenLimits(
+			relayInfo.UserId,
+			usageDate,
+			weekStart,
+			relayInfo.DailyTokenLimit,
+			relayInfo.WeeklyTokenLimit,
+			reservedTokens,
+		)
+	}
 	if errors.Is(err, model.ErrDailyTokenLimitExceeded) {
 		return types.NewErrorWithStatusCode(
 			fmt.Errorf("每日 Token 使用量已达到限额（%d），将在站点时区 00:00 重置", relayInfo.DailyTokenLimit),
@@ -134,17 +180,28 @@ func PreConsumeDailyTokens(relayInfo *relaycommon.RelayInfo, promptTokens int, m
 			types.ErrOptionWithNoRecordErrorLog(),
 		)
 	}
+	if errors.Is(err, model.ErrModelWeeklyTokenLimitExceeded) {
+		return types.NewErrorWithStatusCode(
+			fmt.Errorf("模型 %s 每周 Token 使用量已达到独立限额（%d），将在站点时区下周一 00:00 重置", relayInfo.OriginModelName, relayInfo.ModelWeeklyTokenLimit),
+			types.ErrorCodeModelWeeklyTokenLimitExceeded,
+			http.StatusTooManyRequests,
+			types.ErrOptionWithSkipRetry(),
+			types.ErrOptionWithNoRecordErrorLog(),
+		)
+	}
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 	}
 
 	relayInfo.DailyTokens = &DailyTokenSession{
-		userId:         relayInfo.UserId,
-		usageDate:      usageDate,
-		weekStart:      weekStart,
-		dailyEnabled:   relayInfo.DailyTokenLimit > 0,
-		weeklyEnabled:  relayInfo.WeeklyTokenLimit > 0,
-		reservedTokens: reservedTokens,
+		userId:             relayInfo.UserId,
+		modelName:          relayInfo.OriginModelName,
+		usageDate:          usageDate,
+		weekStart:          weekStart,
+		dailyEnabled:       relayInfo.DailyTokenLimit > 0,
+		weeklyEnabled:      relayInfo.WeeklyTokenLimit > 0 && relayInfo.ModelWeeklyTokenLimit == 0,
+		modelWeeklyEnabled: relayInfo.ModelWeeklyTokenLimit > 0,
+		reservedTokens:     reservedTokens,
 	}
 	return nil
 }

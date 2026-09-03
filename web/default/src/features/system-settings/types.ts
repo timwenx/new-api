@@ -384,6 +384,8 @@ export type SecuritySettings = {
   'fetch_setting.allowed_ports': number[]
   'fetch_setting.apply_ip_filter_for_domain': boolean
   'token_setting.max_user_tokens': number
+  'token_setting.model_weekly_limit_model': string
+  'token_setting.model_weekly_token_limit': number
 }
 
 export type UpstreamChannel = {

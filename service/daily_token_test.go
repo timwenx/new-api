@@ -35,6 +35,13 @@ func weeklyTokenUsageForServiceTest(t *testing.T, userId int, weekStart string) 
 	return usage
 }
 
+func modelWeeklyTokenUsageForServiceTest(t *testing.T, userId int, modelName string, weekStart string) model.UserModelWeeklyTokenUsage {
+	t.Helper()
+	var usage model.UserModelWeeklyTokenUsage
+	require.NoError(t, model.DB.Where("user_id = ? AND model_name = ? AND week_start = ?", userId, modelName, weekStart).First(&usage).Error)
+	return usage
+}
+
 func TestPreConsumeDailyTokensSettlesActualInputAndOutputUsage(t *testing.T) {
 	truncate(t)
 
@@ -135,6 +142,55 @@ func TestPreConsumeWeeklyTokensReturnsRateLimitError(t *testing.T) {
 	assert.Nil(t, info.DailyTokens)
 }
 
+func TestPreConsumeModelWeeklyTokensKeepsDailyAndExcludesGeneralWeekly(t *testing.T) {
+	truncate(t)
+
+	info := &relaycommon.RelayInfo{
+		UserId:                307,
+		OriginModelName:       "gpt-special",
+		DailyTokenLimit:       1_000,
+		WeeklyTokenLimit:      200,
+		ModelWeeklyTokenLimit: 3_000_000_000,
+		StartTime:             time.Date(2026, time.August, 7, 12, 0, 0, 0, time.Local),
+	}
+	require.Nil(t, PreConsumeDailyTokens(info, 100, 400))
+	assert.EqualValues(t, 500, dailyTokenUsageForServiceTest(t, 307, "2026-08-07").UsedTokens)
+	assert.EqualValues(t, 500, modelWeeklyTokenUsageForServiceTest(t, 307, "gpt-special", "2026-08-03").UsedTokens)
+
+	var generalWeeklyRows int64
+	require.NoError(t, model.DB.Model(&model.UserWeeklyTokenUsage{}).Where("user_id = ?", 307).Count(&generalWeeklyRows).Error)
+	assert.Zero(t, generalWeeklyRows)
+
+	SettleDailyTokens(dailyTokenTestContext(), info, 300)
+	assert.EqualValues(t, 300, dailyTokenUsageForServiceTest(t, 307, "2026-08-07").UsedTokens)
+	assert.EqualValues(t, 300, modelWeeklyTokenUsageForServiceTest(t, 307, "gpt-special", "2026-08-03").UsedTokens)
+}
+
+func TestPreConsumeModelWeeklyTokensReturnsIndependentLimitError(t *testing.T) {
+	truncate(t)
+
+	info := &relaycommon.RelayInfo{
+		UserId:                308,
+		OriginModelName:       "gpt-special",
+		DailyTokenLimit:       1_000,
+		WeeklyTokenLimit:      1_000,
+		ModelWeeklyTokenLimit: 499,
+		StartTime:             time.Date(2026, time.August, 7, 12, 0, 0, 0, time.Local),
+	}
+	apiErr := PreConsumeDailyTokens(info, 100, 400)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, types.ErrorCodeModelWeeklyTokenLimitExceeded, apiErr.GetErrorCode())
+	assert.Equal(t, 429, apiErr.StatusCode)
+	assert.Nil(t, info.DailyTokens)
+
+	var dailyRows int64
+	require.NoError(t, model.DB.Model(&model.UserDailyTokenUsage{}).Where("user_id = ?", 308).Count(&dailyRows).Error)
+	assert.Zero(t, dailyRows)
+	var generalWeeklyRows int64
+	require.NoError(t, model.DB.Model(&model.UserWeeklyTokenUsage{}).Where("user_id = ?", 308).Count(&generalWeeklyRows).Error)
+	assert.Zero(t, generalWeeklyRows)
+}
+
 func TestDailyTokenReservationUsesFallbackWhenMaxOutputIsAbsent(t *testing.T) {
 	oldPreConsumedQuota := common.PreConsumedQuota
 	common.PreConsumedQuota = 500
@@ -177,4 +233,20 @@ func TestEstimateRequestTokenStillCountsForWeeklyLimitWhenGlobalCountingIsDisabl
 	)
 	require.NoError(t, err)
 	assert.Equal(t, 4, tokens)
+}
+
+func TestEstimateRequestTokenStillCountsForModelWeeklyLimitWhenGlobalCountingIsDisabled(t *testing.T) {
+	oldCountToken := constant.CountToken
+	constant.CountToken = false
+	t.Cleanup(func() {
+		constant.CountToken = oldCountToken
+	})
+
+	tokens, err := EstimateRequestToken(
+		dailyTokenTestContext(),
+		&types.TokenCountMeta{TokenType: types.TokenTypeTextNumber, CombineText: "模型周限额"},
+		&relaycommon.RelayInfo{ModelWeeklyTokenLimit: 1_000},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, 5, tokens)
 }

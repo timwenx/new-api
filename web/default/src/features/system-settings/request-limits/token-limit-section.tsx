@@ -37,10 +37,19 @@ import { SettingsForm } from '../components/settings-form-layout'
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
+import { safeNumberFieldProps } from '../utils/numeric-field'
+
+const MAX_WEEKLY_TOKEN_LIMIT = 9_007_199_254_740_991
 
 const tokenLimitSchema = z.object({
   token_setting: z.object({
     max_user_tokens: z.number().min(1),
+    model_weekly_limit_model: z.string().trim().max(191),
+    model_weekly_token_limit: z
+      .number()
+      .int()
+      .min(0)
+      .max(MAX_WEEKLY_TOKEN_LIMIT),
   }),
 })
 
@@ -49,6 +58,8 @@ type TokenLimitFormInput = z.input<typeof tokenLimitSchema>
 
 type NormalizedTokenLimitValues = {
   'token_setting.max_user_tokens': number
+  'token_setting.model_weekly_limit_model': string
+  'token_setting.model_weekly_token_limit': number
 }
 
 type TokenLimitSectionProps = {
@@ -60,6 +71,10 @@ const buildFormDefaults = (
 ): TokenLimitFormInput => ({
   token_setting: {
     max_user_tokens: defaults['token_setting.max_user_tokens'],
+    model_weekly_limit_model:
+      defaults['token_setting.model_weekly_limit_model'],
+    model_weekly_token_limit:
+      defaults['token_setting.model_weekly_token_limit'],
   },
 })
 
@@ -67,6 +82,10 @@ const normalizeFormValues = (
   values: TokenLimitFormValues
 ): NormalizedTokenLimitValues => ({
   'token_setting.max_user_tokens': values.token_setting.max_user_tokens,
+  'token_setting.model_weekly_limit_model':
+    values.token_setting.model_weekly_limit_model.trim(),
+  'token_setting.model_weekly_token_limit':
+    values.token_setting.model_weekly_token_limit,
 })
 
 export function TokenLimitSection({ defaultValues }: TokenLimitSectionProps) {
@@ -83,11 +102,16 @@ export function TokenLimitSection({ defaultValues }: TokenLimitSectionProps) {
   }, [defaultValues, form])
 
   const onSubmit = async (values: TokenLimitFormValues) => {
-    const key = 'token_setting.max_user_tokens' as const
     const normalized = normalizeFormValues(values)
-    const value = normalized[key]
-    if (value !== defaultValues[key]) {
-      await updateOption.mutateAsync({ key, value })
+    const keys = [
+      'token_setting.max_user_tokens',
+      'token_setting.model_weekly_token_limit',
+      'token_setting.model_weekly_limit_model',
+    ] as const
+    for (const key of keys) {
+      if (normalized[key] !== defaultValues[key]) {
+        await updateOption.mutateAsync({ key, value: normalized[key] })
+      }
     }
   }
 
@@ -120,6 +144,50 @@ export function TokenLimitSection({ defaultValues }: TokenLimitSectionProps) {
                 <FormDescription>
                   {t(
                     'Maximum number of tokens each user can create. Default 1000. Setting too large may affect performance.'
+                  )}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name='token_setting.model_weekly_limit_model'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Model with separate weekly limit')}</FormLabel>
+                <FormControl>
+                  <Input {...field} placeholder='gpt-...' />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    "Enter the exact original model name. When this model and a limit are configured, its usage is excluded from each user's regular weekly token limit."
+                  )}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name='token_setting.model_weekly_token_limit'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>
+                  {t('Separate weekly Token limit per user')}
+                </FormLabel>
+                <FormControl>
+                  <Input
+                    type='number'
+                    min={0}
+                    max={MAX_WEEKLY_TOKEN_LIMIT}
+                    step={1}
+                    {...safeNumberFieldProps(field)}
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'This limit applies separately to every user and resets Monday at 00:00 in the site timezone. Daily token limits still include this model. 0 disables the separate limit.'
                   )}
                 </FormDescription>
                 <FormMessage />
