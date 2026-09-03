@@ -641,6 +641,10 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
           <StreamTpsCell
             isStream={log.is_stream}
             isWebSocket={other?.ws === true}
+            isWebSocketToHttp={
+              other?.ws_to_http === true ||
+              (other?.ws === true && log.is_stream)
+            }
             tokensPerSecond={tokensPerSecond}
             streamStatus={other?.stream_status}
           />

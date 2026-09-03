@@ -470,6 +470,7 @@ func (s *responsesWSSession) prepareCall(create responsesWSCreateRequest, commit
 	}
 	common.SetContextKey(s.c, appconstant.ContextKeyRequestStartTime, time.Now())
 	relayInfo := relaycommon.GenRelayInfoResponses(s.c, &req)
+	relayInfo.ResponsesHTTPBridge = !upstreamWebSocket
 	relayInfo.RequestId = fmt.Sprintf("%s-ws-%d", relayInfo.RequestId, s.nextEventIndex)
 	s.nextEventIndex++
 

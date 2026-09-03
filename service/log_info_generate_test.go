@@ -20,11 +20,14 @@ func TestGenerateTextOtherInfoMarksWebSocketTransport(t *testing.T) {
 	tests := []struct {
 		name             string
 		clientWs         *websocket.Conn
+		httpBridge       bool
 		wantWSKey        bool
+		wantWSToHTTPKey  bool
 		upstreamFastMode bool
 	}{
 		{name: "http", wantWSKey: false, upstreamFastMode: false},
 		{name: "websocket", clientWs: &websocket.Conn{}, wantWSKey: true, upstreamFastMode: true},
+		{name: "responses websocket to http", clientWs: &websocket.Conn{}, httpBridge: true, wantWSKey: true, wantWSToHTTPKey: true},
 	}
 
 	for _, tt := range tests {
@@ -33,11 +36,12 @@ func TestGenerateTextOtherInfoMarksWebSocketTransport(t *testing.T) {
 			ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
 			startTime := time.Unix(1_700_000_000, 0)
 			relayInfo := &relaycommon.RelayInfo{
-				StartTime:         startTime,
-				FirstResponseTime: startTime.Add(1500 * time.Millisecond),
-				ClientWs:          tt.clientWs,
-				UpstreamFastMode:  tt.upstreamFastMode,
-				ChannelMeta:       &relaycommon.ChannelMeta{},
+				StartTime:           startTime,
+				FirstResponseTime:   startTime.Add(1500 * time.Millisecond),
+				ClientWs:            tt.clientWs,
+				ResponsesHTTPBridge: tt.httpBridge,
+				UpstreamFastMode:    tt.upstreamFastMode,
+				ChannelMeta:         &relaycommon.ChannelMeta{},
 			}
 
 			other := GenerateTextOtherInfo(ctx, relayInfo, 1, 1, 1, 0, 0, 0, -1)
@@ -48,6 +52,11 @@ func TestGenerateTextOtherInfoMarksWebSocketTransport(t *testing.T) {
 			assert.Equal(t, tt.wantWSKey, exists)
 			if tt.wantWSKey {
 				require.Equal(t, true, ws)
+			}
+			wsToHTTP, exists := other["ws_to_http"]
+			assert.Equal(t, tt.wantWSToHTTPKey, exists)
+			if tt.wantWSToHTTPKey {
+				require.Equal(t, true, wsToHTTP)
 			}
 		})
 	}

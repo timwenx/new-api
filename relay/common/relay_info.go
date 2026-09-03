@@ -111,6 +111,7 @@ type RelayInfo struct {
 	DisablePing            bool // 是否禁止向下游发送自定义 Ping
 	ClientWs               *websocket.Conn
 	TargetWs               *websocket.Conn
+	ResponsesHTTPBridge    bool // 客户端使用 Responses WS、上游改用 HTTP 流式请求
 	InputAudioFormat       string
 	OutputAudioFormat      string
 	RealtimeTools          []dto.RealTimeTool
