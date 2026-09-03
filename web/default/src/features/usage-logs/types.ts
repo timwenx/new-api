@@ -157,6 +157,7 @@ export interface LogOtherData {
   request_path?: string
   request_conversion?: string[]
   ws?: boolean
+  ws_to_http?: boolean
   audio?: boolean
   audio_input?: number
   audio_output?: number

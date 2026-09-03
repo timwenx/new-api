@@ -82,6 +82,9 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	other["frt"] = float64(relayInfo.FirstResponseTime.UnixMilli() - relayInfo.StartTime.UnixMilli())
 	if relayInfo.ClientWs != nil {
 		other["ws"] = true
+		if relayInfo.ResponsesHTTPBridge {
+			other["ws_to_http"] = true
+		}
 	}
 	if relayInfo.ReasoningEffort != "" {
 		other["reasoning_effort"] = relayInfo.ReasoningEffort
