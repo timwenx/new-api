@@ -87,6 +87,10 @@ const SECURITY_SECTIONS = [
         defaultValues={{
           'token_setting.max_user_tokens':
             settings['token_setting.max_user_tokens'],
+          'token_setting.model_weekly_limit_model':
+            settings['token_setting.model_weekly_limit_model'],
+          'token_setting.model_weekly_token_limit':
+            settings['token_setting.model_weekly_token_limit'],
         }}
       />
     ),

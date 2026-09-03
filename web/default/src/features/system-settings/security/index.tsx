@@ -43,6 +43,8 @@ const defaultSecuritySettings: SecuritySettings = {
   'fetch_setting.allowed_ports': [],
   'fetch_setting.apply_ip_filter_for_domain': false,
   'token_setting.max_user_tokens': 1000,
+  'token_setting.model_weekly_limit_model': '',
+  'token_setting.model_weekly_token_limit': 1_000_000_000,
 }
 
 export function SecuritySettings() {

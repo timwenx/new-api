@@ -795,6 +795,9 @@ func (user *User) HardDelete() error {
 		if err := tx.Unscoped().Where("user_id = ?", user.Id).Delete(&UserWeeklyTokenUsage{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Unscoped().Where("user_id = ?", user.Id).Delete(&UserModelWeeklyTokenUsage{}).Error; err != nil {
+			return err
+		}
 		return tx.Unscoped().Delete(user).Error
 	})
 	if err != nil {

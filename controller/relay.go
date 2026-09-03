@@ -143,7 +143,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 
 	needSensitiveCheck := setting.ShouldCheckPromptSensitive()
-	needCountToken := constant.CountToken || relayInfo.DailyTokenLimit > 0 || relayInfo.WeeklyTokenLimit > 0
+	needCountToken := constant.CountToken || relayInfo.DailyTokenLimit > 0 || relayInfo.WeeklyTokenLimit > 0 || relayInfo.ModelWeeklyTokenLimit > 0
 	// Avoid building huge CombineText (strings.Join) when token counting and sensitive check are both disabled.
 	var meta *types.TokenCountMeta
 	if needSensitiveCheck || needCountToken {

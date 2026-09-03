@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/setting/model_setting"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -121,6 +122,7 @@ type RelayInfo struct {
 	UserQuota              int
 	DailyTokenLimit        int64
 	WeeklyTokenLimit       int64
+	ModelWeeklyTokenLimit  int64
 	RelayFormat            types.RelayFormat
 	SendResponseCount      int
 	ReceivedResponseCount  int
@@ -478,19 +480,21 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 	}
 	dailyTokenLimit, _ := common.GetContextKeyType[int64](c, constant.ContextKeyUserDailyTokenLimit)
 	weeklyTokenLimit, _ := common.GetContextKeyType[int64](c, constant.ContextKeyUserWeeklyTokenLimit)
+	originModelName := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
 	info := &RelayInfo{
 		Request: request,
 
-		RequestId:        reqId,
-		UserId:           common.GetContextKeyInt(c, constant.ContextKeyUserId),
-		UsingGroup:       common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
-		UserGroup:        common.GetContextKeyString(c, constant.ContextKeyUserGroup),
-		UserQuota:        common.GetContextKeyInt(c, constant.ContextKeyUserQuota),
-		UserEmail:        common.GetContextKeyString(c, constant.ContextKeyUserEmail),
-		DailyTokenLimit:  dailyTokenLimit,
-		WeeklyTokenLimit: weeklyTokenLimit,
+		RequestId:             reqId,
+		UserId:                common.GetContextKeyInt(c, constant.ContextKeyUserId),
+		UsingGroup:            common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
+		UserGroup:             common.GetContextKeyString(c, constant.ContextKeyUserGroup),
+		UserQuota:             common.GetContextKeyInt(c, constant.ContextKeyUserQuota),
+		UserEmail:             common.GetContextKeyString(c, constant.ContextKeyUserEmail),
+		DailyTokenLimit:       dailyTokenLimit,
+		WeeklyTokenLimit:      weeklyTokenLimit,
+		ModelWeeklyTokenLimit: operation_setting.GetModelWeeklyTokenLimit(originModelName),
 
-		OriginModelName: common.GetContextKeyString(c, constant.ContextKeyOriginalModel),
+		OriginModelName: originModelName,
 
 		TokenId:        common.GetContextKeyInt(c, constant.ContextKeyTokenId),
 		TokenKey:       common.GetContextKeyString(c, constant.ContextKeyTokenKey),

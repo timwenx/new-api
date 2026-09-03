@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
@@ -301,6 +302,25 @@ func UpdateOption(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
 				"message": "IP 并发限制必须是 0 到 2147483647 之间的整数",
+			})
+			return
+		}
+	case "token_setting.model_weekly_limit_model":
+		modelName := strings.TrimSpace(option.Value.(string))
+		if utf8.RuneCountInString(modelName) > 191 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "独立周额度模型名称不能超过 191 个字符",
+			})
+			return
+		}
+		option.Value = modelName
+	case "token_setting.model_weekly_token_limit":
+		weeklyLimit, parseErr := strconv.ParseInt(strings.TrimSpace(option.Value.(string)), 10, 64)
+		if parseErr != nil || weeklyLimit < 0 || weeklyLimit > model.MaxWeeklyTokenLimit {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": fmt.Sprintf("模型独立周额度必须是 0 到 %d 之间的整数", model.MaxWeeklyTokenLimit),
 			})
 			return
 		}
