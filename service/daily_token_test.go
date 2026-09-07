@@ -221,6 +221,21 @@ func TestModelTokenMultiplierAppliesToDailyAndWeeklyLimits(t *testing.T) {
 	assert.Equal(t, types.ErrorCodeDailyTokenLimitExceeded, apiErr.GetErrorCode())
 }
 
+func TestFractionalModelTokenMultiplierReducesCountedUsage(t *testing.T) {
+	truncate(t)
+
+	info := &relaycommon.RelayInfo{
+		UserId:           311,
+		DailyTokenLimit:  2_500,
+		WeeklyTokenLimit: 2_500,
+		TokenMultiplier:  0.5,
+		StartTime:        time.Date(2026, time.August, 7, 12, 0, 0, 0, time.Local),
+	}
+	require.Nil(t, PreConsumeDailyTokens(info, 2_500, 2_500))
+	assert.EqualValues(t, 2_500, dailyTokenUsageForServiceTest(t, 311, "2026-08-07").UsedTokens)
+	assert.EqualValues(t, 2_500, weeklyTokenUsageForServiceTest(t, 311, "2026-08-03").UsedTokens)
+}
+
 func TestModelTokenMultiplierAppliesToIndependentModelWeeklyLimit(t *testing.T) {
 	truncate(t)
 
