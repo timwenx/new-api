@@ -667,7 +667,19 @@ type Stat struct {
 func countedTokenSumExpression() string {
 	multiplier := "CASE WHEN token_multiplier > 0 THEN token_multiplier ELSE 1 END"
 	rounded := "FLOOR((prompt_tokens + completion_tokens) * (" + multiplier + ") + 0.5)"
-	return "COALESCE(SUM(CASE WHEN prompt_tokens + completion_tokens > 0 AND " + rounded + " < 1 THEN 1 ELSE " + rounded + " END), 0)"
+	sum := "COALESCE(SUM(CASE WHEN prompt_tokens + completion_tokens > 0 AND " + rounded + " < 1 THEN 1 ELSE " + rounded + " END), 0)"
+	switch {
+	case common.UsingLogDatabase(common.DatabaseTypeMySQL):
+		return "CAST(" + sum + " AS SIGNED)"
+	case common.UsingLogDatabase(common.DatabaseTypePostgreSQL):
+		return "CAST(" + sum + " AS BIGINT)"
+	case common.UsingLogDatabase(common.DatabaseTypeSQLite):
+		return "CAST(" + sum + " AS INTEGER)"
+	case common.UsingLogDatabase(common.DatabaseTypeClickHouse):
+		return "toInt64(" + sum + ")"
+	default:
+		return sum
+	}
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {

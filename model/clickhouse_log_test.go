@@ -102,6 +102,27 @@ func TestClickHouseLogOrder(t *testing.T) {
 	assert.Equal(t, "logs.created_at desc, logs.request_id desc", clickHouseLogOrder("logs."))
 }
 
+func TestCountedTokenSumExpressionCastsAggregateForEachLogDatabase(t *testing.T) {
+	originalLogDatabaseType := common.LogDatabaseType()
+	t.Cleanup(func() {
+		common.SetLogDatabaseType(originalLogDatabaseType)
+	})
+
+	tests := []struct {
+		databaseType common.DatabaseType
+		cast         string
+	}{
+		{databaseType: common.DatabaseTypeMySQL, cast: " AS SIGNED)"},
+		{databaseType: common.DatabaseTypePostgreSQL, cast: " AS BIGINT)"},
+		{databaseType: common.DatabaseTypeSQLite, cast: " AS INTEGER)"},
+		{databaseType: common.DatabaseTypeClickHouse, cast: "toInt64("},
+	}
+	for _, test := range tests {
+		common.SetLogDatabaseType(test.databaseType)
+		assert.Contains(t, countedTokenSumExpression(), test.cast)
+	}
+}
+
 func TestBuildLogLikeConditionUsesStandardEscape(t *testing.T) {
 	originalLogDatabaseType := common.LogDatabaseType()
 	t.Cleanup(func() {
