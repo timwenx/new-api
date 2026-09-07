@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"sync"
 	"time"
@@ -25,6 +26,7 @@ type DailyTokenSession struct {
 	dailyEnabled       bool
 	weeklyEnabled      bool
 	modelWeeklyEnabled bool
+	tokenMultiplier    float64
 	reservedTokens     int64
 	settled            bool
 	refunded           bool
@@ -40,7 +42,11 @@ func (s *DailyTokenSession) Settle(actualTokens int) error {
 	if actualTokens < 0 {
 		return errors.New("actual token usage cannot be negative")
 	}
-	delta := int64(actualTokens) - s.reservedTokens
+	countedTokens, err := common.ScaleTokenCount(int64(actualTokens), s.tokenMultiplier, model.MaxWeeklyTokenLimit)
+	if err != nil {
+		return fmt.Errorf("error applying model token multiplier: %w", err)
+	}
+	delta := countedTokens - s.reservedTokens
 	if err := s.adjust(delta); err != nil {
 		return err
 	}
@@ -94,6 +100,13 @@ func dailyTokenReservationTokens(promptTokens int, maxOutputTokens int) int64 {
 	return fallback
 }
 
+func relayTokenMultiplier(relayInfo *relaycommon.RelayInfo) float64 {
+	if relayInfo == nil || relayInfo.TokenMultiplier <= 0 || math.IsNaN(relayInfo.TokenMultiplier) || math.IsInf(relayInfo.TokenMultiplier, 0) {
+		return 1
+	}
+	return relayInfo.TokenMultiplier
+}
+
 // PreConsumeDailyTokens reserves the request's estimated maximum usage against
 // enabled daily and weekly limits before it reaches an upstream channel. The
 // settled count is corrected to actual input + output tokens after success.
@@ -134,7 +147,20 @@ func PreConsumeDailyTokens(relayInfo *relaycommon.RelayInfo, promptTokens int, m
 		)
 	}
 
-	reservedTokens := dailyTokenReservationTokens(promptTokens, maxOutputTokens)
+	tokenMultiplier := relayTokenMultiplier(relayInfo)
+	reservedTokens, scaleErr := common.ScaleTokenCount(
+		dailyTokenReservationTokens(promptTokens, maxOutputTokens),
+		tokenMultiplier,
+		model.MaxWeeklyTokenLimit,
+	)
+	if scaleErr != nil {
+		return types.NewErrorWithStatusCode(
+			fmt.Errorf("invalid model token multiplier: %w", scaleErr),
+			types.ErrorCodeInvalidRequest,
+			http.StatusBadRequest,
+			types.ErrOptionWithSkipRetry(),
+		)
+	}
 	requestTime := relayInfo.StartTime
 	if requestTime.IsZero() {
 		requestTime = time.Now()
@@ -201,6 +227,7 @@ func PreConsumeDailyTokens(relayInfo *relaycommon.RelayInfo, promptTokens int, m
 		dailyEnabled:       relayInfo.DailyTokenLimit > 0,
 		weeklyEnabled:      relayInfo.WeeklyTokenLimit > 0 && relayInfo.ModelWeeklyTokenLimit == 0,
 		modelWeeklyEnabled: relayInfo.ModelWeeklyTokenLimit > 0,
+		tokenMultiplier:    tokenMultiplier,
 		reservedTokens:     reservedTokens,
 	}
 	return nil

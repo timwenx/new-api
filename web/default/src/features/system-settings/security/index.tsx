@@ -45,6 +45,7 @@ const defaultSecuritySettings: SecuritySettings = {
   'token_setting.max_user_tokens': 1000,
   'token_setting.model_weekly_limit_model': '',
   'token_setting.model_weekly_token_limit': 1_000_000_000,
+  'token_setting.model_token_multipliers': '{}',
 }
 
 export function SecuritySettings() {

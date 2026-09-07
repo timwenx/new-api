@@ -124,6 +124,7 @@ type RelayInfo struct {
 	DailyTokenLimit        int64
 	WeeklyTokenLimit       int64
 	ModelWeeklyTokenLimit  int64
+	TokenMultiplier        float64
 	RelayFormat            types.RelayFormat
 	SendResponseCount      int
 	ReceivedResponseCount  int
@@ -494,6 +495,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		DailyTokenLimit:       dailyTokenLimit,
 		WeeklyTokenLimit:      weeklyTokenLimit,
 		ModelWeeklyTokenLimit: operation_setting.GetModelWeeklyTokenLimit(originModelName),
+		TokenMultiplier:       operation_setting.GetModelTokenMultiplier(originModelName),
 
 		OriginModelName: originModelName,
 

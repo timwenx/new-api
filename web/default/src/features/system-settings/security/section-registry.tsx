@@ -91,6 +91,8 @@ const SECURITY_SECTIONS = [
             settings['token_setting.model_weekly_limit_model'],
           'token_setting.model_weekly_token_limit':
             settings['token_setting.model_weekly_token_limit'],
+          'token_setting.model_token_multipliers':
+            settings['token_setting.model_token_multipliers'],
         }}
       />
     ),

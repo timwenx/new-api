@@ -115,3 +115,47 @@ func TestGetUserIPUsage(t *testing.T) {
 		LastUsedAt:       120,
 	}, secondPage[0])
 }
+
+func TestRecordConsumeLogKeepsRawTokensAndExportsMultipliedUsage(t *testing.T) {
+	truncateTables(t)
+
+	previousDataExportEnabled := common.DataExportEnabled
+	common.DataExportEnabled = true
+	CacheQuotaDataLock.Lock()
+	CacheQuotaData = make(map[string]*QuotaData)
+	CacheQuotaDataLock.Unlock()
+	t.Cleanup(func() {
+		common.DataExportEnabled = previousDataExportEnabled
+		CacheQuotaDataLock.Lock()
+		CacheQuotaData = make(map[string]*QuotaData)
+		CacheQuotaDataLock.Unlock()
+	})
+
+	writer := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(writer)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	ctx.Set("username", "multiplier-user")
+
+	RecordConsumeLog(ctx, 991, RecordConsumeLogParams{
+		PromptTokens:     3_000,
+		CompletionTokens: 2_000,
+		TokenMultiplier:  2,
+		ModelName:        "gpt-special",
+	})
+
+	var log Log
+	require.NoError(t, LOG_DB.Where("user_id = ?", 991).First(&log).Error)
+	assert.Equal(t, 3_000, log.PromptTokens)
+	assert.Equal(t, 2_000, log.CompletionTokens)
+	assert.Equal(t, 2.0, log.TokenMultiplier)
+	assert.Equal(t, 10_000, SumUsedToken(LogTypeConsume, 0, 0, "gpt-special", "multiplier-user", ""))
+
+	CacheQuotaDataLock.Lock()
+	cachedItems := make([]*QuotaData, 0, len(CacheQuotaData))
+	for _, item := range CacheQuotaData {
+		cachedItems = append(cachedItems, item)
+	}
+	CacheQuotaDataLock.Unlock()
+	require.Len(t, cachedItems, 1)
+	assert.EqualValues(t, 10_000, cachedItems[0].TokenUsed)
+}

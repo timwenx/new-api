@@ -191,6 +191,57 @@ func TestPreConsumeModelWeeklyTokensReturnsIndependentLimitError(t *testing.T) {
 	assert.Zero(t, generalWeeklyRows)
 }
 
+func TestModelTokenMultiplierAppliesToDailyAndWeeklyLimits(t *testing.T) {
+	truncate(t)
+
+	requestTime := time.Date(2026, time.August, 7, 12, 0, 0, 0, time.Local)
+	info := &relaycommon.RelayInfo{
+		UserId:           309,
+		DailyTokenLimit:  10_000,
+		WeeklyTokenLimit: 10_000,
+		TokenMultiplier:  2,
+		StartTime:        requestTime,
+	}
+	require.Nil(t, PreConsumeDailyTokens(info, 2_500, 2_500))
+	assert.EqualValues(t, 10_000, dailyTokenUsageForServiceTest(t, 309, "2026-08-07").UsedTokens)
+	assert.EqualValues(t, 10_000, weeklyTokenUsageForServiceTest(t, 309, "2026-08-03").UsedTokens)
+
+	SettleDailyTokens(dailyTokenTestContext(), info, 5_000)
+	assert.EqualValues(t, 10_000, dailyTokenUsageForServiceTest(t, 309, "2026-08-07").UsedTokens)
+
+	nextInfo := &relaycommon.RelayInfo{
+		UserId:           309,
+		DailyTokenLimit:  10_000,
+		WeeklyTokenLimit: 10_000,
+		TokenMultiplier:  2,
+		StartTime:        requestTime,
+	}
+	apiErr := PreConsumeDailyTokens(nextInfo, 1, 1)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, types.ErrorCodeDailyTokenLimitExceeded, apiErr.GetErrorCode())
+}
+
+func TestModelTokenMultiplierAppliesToIndependentModelWeeklyLimit(t *testing.T) {
+	truncate(t)
+
+	info := &relaycommon.RelayInfo{
+		UserId:                310,
+		OriginModelName:       "gpt-special",
+		DailyTokenLimit:       20_000,
+		WeeklyTokenLimit:      1,
+		ModelWeeklyTokenLimit: 10_000,
+		TokenMultiplier:       2,
+		StartTime:             time.Date(2026, time.August, 7, 12, 0, 0, 0, time.Local),
+	}
+	require.Nil(t, PreConsumeDailyTokens(info, 2_500, 2_500))
+	assert.EqualValues(t, 10_000, dailyTokenUsageForServiceTest(t, 310, "2026-08-07").UsedTokens)
+	assert.EqualValues(t, 10_000, modelWeeklyTokenUsageForServiceTest(t, 310, "gpt-special", "2026-08-03").UsedTokens)
+
+	var generalWeeklyRows int64
+	require.NoError(t, model.DB.Model(&model.UserWeeklyTokenUsage{}).Where("user_id = ?", 310).Count(&generalWeeklyRows).Error)
+	assert.Zero(t, generalWeeklyRows)
+}
+
 func TestDailyTokenReservationUsesFallbackWhenMaxOutputIsAbsent(t *testing.T) {
 	oldPreConsumedQuota := common.PreConsumedQuota
 	common.PreConsumedQuota = 500
