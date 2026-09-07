@@ -64,6 +64,7 @@ import {
   isTimingLogType,
 } from '../../lib/utils'
 import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
+import { TokenMultiplierBadge } from '../token-multiplier-badge'
 
 // Maps a channel-update changed-field token (as recorded by the backend audit)
 // to its i18n label key for display in the audit details.
@@ -447,6 +448,14 @@ function TokenBreakdown(props: { log: UsageLog; other: LogOtherData }) {
       {rows.map((row) => (
         <DetailRow key={row.label} label={row.label} value={row.value} mono />
       ))}
+      {Number.isFinite(log.token_multiplier) &&
+        log.token_multiplier > 0 &&
+        log.token_multiplier !== 1 && (
+          <DetailRow
+            label={t('Token multiplier')}
+            value={<TokenMultiplierBadge multiplier={log.token_multiplier} />}
+          />
+        )}
     </DetailSection>
   )
 }

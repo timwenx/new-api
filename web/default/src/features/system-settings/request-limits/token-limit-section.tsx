@@ -38,6 +38,12 @@ import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
 import { safeNumberFieldProps } from '../utils/numeric-field'
+import {
+  modelTokenMultiplierRowsSchema,
+  parseModelTokenMultipliers,
+  serializeModelTokenMultipliers,
+} from './model-token-multiplier'
+import { ModelTokenMultiplierFields } from './model-token-multiplier-fields'
 
 const MAX_WEEKLY_TOKEN_LIMIT = 9_007_199_254_740_991
 
@@ -50,6 +56,7 @@ const tokenLimitSchema = z.object({
       .int()
       .min(0)
       .max(MAX_WEEKLY_TOKEN_LIMIT),
+    model_token_multipliers: modelTokenMultiplierRowsSchema,
   }),
 })
 
@@ -60,6 +67,7 @@ type NormalizedTokenLimitValues = {
   'token_setting.max_user_tokens': number
   'token_setting.model_weekly_limit_model': string
   'token_setting.model_weekly_token_limit': number
+  'token_setting.model_token_multipliers': string
 }
 
 type TokenLimitSectionProps = {
@@ -75,6 +83,9 @@ const buildFormDefaults = (
       defaults['token_setting.model_weekly_limit_model'],
     model_weekly_token_limit:
       defaults['token_setting.model_weekly_token_limit'],
+    model_token_multipliers: parseModelTokenMultipliers(
+      defaults['token_setting.model_token_multipliers']
+    ),
   },
 })
 
@@ -86,6 +97,9 @@ const normalizeFormValues = (
     values.token_setting.model_weekly_limit_model.trim(),
   'token_setting.model_weekly_token_limit':
     values.token_setting.model_weekly_token_limit,
+  'token_setting.model_token_multipliers': serializeModelTokenMultipliers(
+    values.token_setting.model_token_multipliers
+  ),
 })
 
 export function TokenLimitSection({ defaultValues }: TokenLimitSectionProps) {
@@ -96,7 +110,6 @@ export function TokenLimitSection({ defaultValues }: TokenLimitSectionProps) {
     mode: 'onChange',
     defaultValues: buildFormDefaults(defaultValues),
   })
-
   useEffect(() => {
     form.reset(buildFormDefaults(defaultValues))
   }, [defaultValues, form])
@@ -107,6 +120,7 @@ export function TokenLimitSection({ defaultValues }: TokenLimitSectionProps) {
       'token_setting.max_user_tokens',
       'token_setting.model_weekly_token_limit',
       'token_setting.model_weekly_limit_model',
+      'token_setting.model_token_multipliers',
     ] as const
     for (const key of keys) {
       if (normalized[key] !== defaultValues[key]) {
@@ -150,6 +164,7 @@ export function TokenLimitSection({ defaultValues }: TokenLimitSectionProps) {
               </FormItem>
             )}
           />
+          <ModelTokenMultiplierFields />
           <FormField
             control={form.control}
             name='token_setting.model_weekly_limit_model'

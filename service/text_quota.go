@@ -497,6 +497,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     summary.PromptTokens,
 		CompletionTokens: summary.CompletionTokens,
+		TokenMultiplier:  relayInfo.TokenMultiplier,
 		ModelName:        logModel,
 		TokenName:        summary.TokenName,
 		Quota:            summary.Quota,

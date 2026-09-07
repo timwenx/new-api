@@ -386,6 +386,7 @@ export type SecuritySettings = {
   'token_setting.max_user_tokens': number
   'token_setting.model_weekly_limit_model': string
   'token_setting.model_weekly_token_limit': number
+  'token_setting.model_token_multipliers': string
 }
 
 export type UpstreamChannel = {

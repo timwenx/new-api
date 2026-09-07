@@ -48,6 +48,7 @@ import {
 } from '../lib/utils'
 import type { LogCategory } from '../types'
 import { StreamTpsCell, TimingMetricsCell } from './timing-metrics-cell'
+import { TokenMultiplierBadge } from './token-multiplier-badge'
 import { useUsageLogsContext } from './usage-logs-provider'
 
 const logTypeRowTint: Record<number, string> = {
@@ -216,9 +217,13 @@ function MobileTokensField({ log }: { log: UsageLog }) {
   return (
     <div className='bg-muted/20 min-w-0 rounded-md px-2 py-1.5'>
       <div className='flex flex-col gap-0.5'>
-        <span className='font-mono text-xs font-medium tabular-nums'>
-          {promptTokens.toLocaleString()} / {completionTokens.toLocaleString()}
-        </span>
+        <div className='flex flex-wrap items-center gap-1.5'>
+          <span className='font-mono text-xs font-medium tabular-nums'>
+            {promptTokens.toLocaleString()} /{' '}
+            {completionTokens.toLocaleString()}
+          </span>
+          <TokenMultiplierBadge multiplier={log.token_multiplier} />
+        </div>
         {showCache ? (
           <div className='text-muted-foreground flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] leading-none'>
             {cacheReadTokens > 0 && (
