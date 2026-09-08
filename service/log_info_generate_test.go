@@ -18,15 +18,16 @@ func TestGenerateTextOtherInfoMarksWebSocketTransport(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
-		name             string
-		clientWs         *websocket.Conn
-		httpBridge       bool
-		wantWSKey        bool
-		wantWSToHTTPKey  bool
-		upstreamFastMode bool
+		name               string
+		clientWs           *websocket.Conn
+		httpBridge         bool
+		wantWSKey          bool
+		wantWSToHTTPKey    bool
+		upstreamFastMode   bool
+		wantFastMultiplier bool
 	}{
 		{name: "http", wantWSKey: false, upstreamFastMode: false},
-		{name: "websocket", clientWs: &websocket.Conn{}, wantWSKey: true, upstreamFastMode: true},
+		{name: "websocket", clientWs: &websocket.Conn{}, wantWSKey: true, upstreamFastMode: true, wantFastMultiplier: true},
 		{name: "responses websocket to http", clientWs: &websocket.Conn{}, httpBridge: true, wantWSKey: true, wantWSToHTTPKey: true},
 	}
 
@@ -48,6 +49,11 @@ func TestGenerateTextOtherInfoMarksWebSocketTransport(t *testing.T) {
 
 			assert.Equal(t, float64(1500), other["frt"])
 			assert.Equal(t, tt.upstreamFastMode, other["fast_mode"])
+			fastMultiplier, exists := other["fast_token_multiplier"]
+			assert.Equal(t, tt.wantFastMultiplier, exists)
+			if tt.wantFastMultiplier {
+				assert.Equal(t, relaycommon.FastTokenMultiplier, fastMultiplier)
+			}
 			ws, exists := other["ws"]
 			assert.Equal(t, tt.wantWSKey, exists)
 			if tt.wantWSKey {

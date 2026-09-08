@@ -99,7 +99,9 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		if err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
-		info.SetUpstreamFastModeFromRequestReader(storage)
+		if apiErr := info.SetUpstreamFastModeFromRequestReader(storage); apiErr != nil {
+			return apiErr
+		}
 		if common.DebugEnabled {
 			if debugBytes, bErr := storage.Bytes(); bErr == nil {
 				logger.LogDebug(c, "requestBody: %s", debugBytes)
@@ -173,7 +175,9 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 				return newAPIErrorFromParamOverride(err)
 			}
 		}
-		info.SetUpstreamFastModeFromRequestBody(jsonData)
+		if apiErr := info.SetUpstreamFastModeFromRequestBody(jsonData); apiErr != nil {
+			return apiErr
+		}
 
 		logger.LogDebug(c, "text request body: %s", jsonData)
 

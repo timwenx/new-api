@@ -456,6 +456,17 @@ function TokenBreakdown(props: { log: UsageLog; other: LogOtherData }) {
             value={<TokenMultiplierBadge multiplier={log.token_multiplier} />}
           />
         )}
+      {other.fast_token_multiplier != null && (
+        <DetailRow
+          label={t('Fast')}
+          value={
+            <TokenMultiplierBadge
+              multiplier={other.fast_token_multiplier}
+              title={t('Fast')}
+            />
+          }
+        />
+      )}
     </DetailSection>
   )
 }

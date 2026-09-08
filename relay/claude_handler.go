@@ -159,7 +159,9 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		if err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
-		info.SetUpstreamFastModeFromRequestReader(storage)
+		if apiErr := info.SetUpstreamFastModeFromRequestReader(storage); apiErr != nil {
+			return apiErr
+		}
 		info.UpstreamRequestBodySize = storage.Size()
 		requestBody = common.ReaderOnly(storage)
 	} else {
@@ -186,7 +188,9 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 				return newAPIErrorFromParamOverride(err)
 			}
 		}
-		info.SetUpstreamFastModeFromRequestBody(jsonData)
+		if apiErr := info.SetUpstreamFastModeFromRequestBody(jsonData); apiErr != nil {
+			return apiErr
+		}
 
 		logger.LogDebug(c, "requestBody: %s", jsonData)
 		body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)

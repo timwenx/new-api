@@ -68,7 +68,7 @@ type Log struct {
 	Quota             int     `json:"quota" gorm:"default:0"`
 	PromptTokens      int     `json:"prompt_tokens" gorm:"default:0"`
 	CompletionTokens  int     `json:"completion_tokens" gorm:"default:0"`
-	TokenMultiplier   float64 `json:"token_multiplier" gorm:"default:1"`
+	TokenMultiplier   float64 `json:"token_multiplier" gorm:"default:1"` // Effective usage multiplier, including fast mode.
 	UseTime           int     `json:"use_time" gorm:"default:0"`
 	IsStream          bool    `json:"is_stream"`
 	ChannelId         int     `json:"channel" gorm:"index"`

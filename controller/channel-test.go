@@ -501,7 +501,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 		ChannelId:        channel.Id,
 		PromptTokens:     usage.PromptTokens,
 		CompletionTokens: usage.CompletionTokens,
-		TokenMultiplier:  info.TokenMultiplier,
+		TokenMultiplier:  info.EffectiveTokenMultiplier(),
 		ModelName:        info.OriginModelName,
 		TokenName:        "模型测试",
 		Quota:            quota,

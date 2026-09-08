@@ -20,16 +20,26 @@ import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
 
-export function TokenMultiplierBadge(props: { multiplier?: number }) {
+function formatMultiplier(multiplier: number): string {
+  return String(Number(multiplier.toPrecision(12)))
+}
+
+export function TokenMultiplierBadge(props: {
+  multiplier?: number
+  title?: string
+}) {
   const { t } = useTranslation()
   const multiplier = props.multiplier ?? 1
   if (!Number.isFinite(multiplier) || multiplier <= 0 || multiplier === 1) {
     return null
   }
 
-  const label = `× ${multiplier}`
+  const label = `× ${formatMultiplier(multiplier)}`
   return (
-    <Badge variant='secondary' title={`${t('Token multiplier')}: ${label}`}>
+    <Badge
+      variant='secondary'
+      title={`${props.title ?? t('Token multiplier')}: ${label}`}
+    >
       {label}
     </Badge>
   )

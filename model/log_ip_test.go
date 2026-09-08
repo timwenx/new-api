@@ -139,7 +139,7 @@ func TestRecordConsumeLogKeepsRawTokensAndExportsMultipliedUsage(t *testing.T) {
 	RecordConsumeLog(ctx, 991, RecordConsumeLogParams{
 		PromptTokens:     3_000,
 		CompletionTokens: 2_000,
-		TokenMultiplier:  2,
+		TokenMultiplier:  3,
 		ModelName:        "gpt-special",
 	})
 
@@ -147,8 +147,8 @@ func TestRecordConsumeLogKeepsRawTokensAndExportsMultipliedUsage(t *testing.T) {
 	require.NoError(t, LOG_DB.Where("user_id = ?", 991).First(&log).Error)
 	assert.Equal(t, 3_000, log.PromptTokens)
 	assert.Equal(t, 2_000, log.CompletionTokens)
-	assert.Equal(t, 2.0, log.TokenMultiplier)
-	assert.Equal(t, 10_000, SumUsedToken(LogTypeConsume, 0, 0, "gpt-special", "multiplier-user", ""))
+	assert.Equal(t, 3.0, log.TokenMultiplier)
+	assert.Equal(t, 15_000, SumUsedToken(LogTypeConsume, 0, 0, "gpt-special", "multiplier-user", ""))
 
 	CacheQuotaDataLock.Lock()
 	cachedItems := make([]*QuotaData, 0, len(CacheQuotaData))
@@ -157,5 +157,5 @@ func TestRecordConsumeLogKeepsRawTokensAndExportsMultipliedUsage(t *testing.T) {
 	}
 	CacheQuotaDataLock.Unlock()
 	require.Len(t, cachedItems, 1)
-	assert.EqualValues(t, 10_000, cachedItems[0].TokenUsed)
+	assert.EqualValues(t, 15_000, cachedItems[0].TokenUsed)
 }

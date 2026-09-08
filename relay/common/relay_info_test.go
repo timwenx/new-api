@@ -11,6 +11,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type dailyTokenMultiplierProbe struct {
+	multiplier float64
+}
+
+func (p *dailyTokenMultiplierProbe) SetUsageMultiplier(multiplier float64) *types.NewAPIError {
+	p.multiplier = multiplier
+	return nil
+}
+
+func (p *dailyTokenMultiplierProbe) Settle(int) error { return nil }
+func (p *dailyTokenMultiplierProbe) Refund() error    { return nil }
+
 func TestRelayInfoGetFinalRequestRelayFormatPrefersExplicitFinal(t *testing.T) {
 	info := &RelayInfo{
 		RelayFormat:             types.RelayFormatOpenAI,
@@ -44,7 +56,8 @@ func TestRelayInfoGetFinalRequestRelayFormatNilReceiver(t *testing.T) {
 }
 
 func TestRelayInfoTracksFastModeFromFinalUpstreamRequest(t *testing.T) {
-	info := &RelayInfo{}
+	probe := &dailyTokenMultiplierProbe{}
+	info := &RelayInfo{TokenMultiplier: 2, DailyTokens: probe}
 
 	filtered, err := RemoveDisabledFields(
 		[]byte(`{"service_tier":"priority"}`),
@@ -52,8 +65,10 @@ func TestRelayInfoTracksFastModeFromFinalUpstreamRequest(t *testing.T) {
 		false,
 	)
 	require.NoError(t, err)
-	info.SetUpstreamFastModeFromRequestBody(filtered)
+	require.Nil(t, info.SetUpstreamFastModeFromRequestBody(filtered))
 	assert.False(t, info.UpstreamFastMode)
+	assert.Equal(t, 1.0, probe.multiplier)
+	assert.Equal(t, 2.0, info.EffectiveTokenMultiplier())
 
 	allowed, err := RemoveDisabledFields(
 		[]byte(`{"service_tier":"priority"}`),
@@ -61,15 +76,19 @@ func TestRelayInfoTracksFastModeFromFinalUpstreamRequest(t *testing.T) {
 		false,
 	)
 	require.NoError(t, err)
-	info.SetUpstreamFastModeFromRequestBody(allowed)
+	require.Nil(t, info.SetUpstreamFastModeFromRequestBody(allowed))
 	assert.True(t, info.UpstreamFastMode)
+	assert.Equal(t, FastTokenMultiplier, probe.multiplier)
+	assert.Equal(t, 3.0, info.EffectiveTokenMultiplier())
 
-	info.SetUpstreamFastModeFromRequestBody([]byte(`{"service_tier":"flex"}`))
+	require.Nil(t, info.SetUpstreamFastModeFromRequestBody([]byte(`{"service_tier":"flex"}`)))
 	assert.False(t, info.UpstreamFastMode)
+	assert.Equal(t, 1.0, probe.multiplier)
 
 	requestBody := bytes.NewReader([]byte(`{"service_tier":"fast"}`))
-	info.SetUpstreamFastModeFromRequestReader(requestBody)
+	require.Nil(t, info.SetUpstreamFastModeFromRequestReader(requestBody))
 	assert.True(t, info.UpstreamFastMode)
+	assert.Equal(t, FastTokenMultiplier, probe.multiplier)
 	position, err := requestBody.Seek(0, io.SeekCurrent)
 	require.NoError(t, err)
 	assert.Zero(t, position)
