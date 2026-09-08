@@ -190,6 +190,7 @@ export interface LogOtherData {
   matched_tier?: string
   reasoning_effort?: string
   fast_mode?: boolean
+  fast_token_multiplier?: number
   image?: boolean
   image_ratio?: number
   image_output?: number

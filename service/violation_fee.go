@@ -149,7 +149,7 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
 		ChannelId:       relayInfo.ChannelId,
-		TokenMultiplier: relayInfo.TokenMultiplier,
+		TokenMultiplier: relayInfo.EffectiveTokenMultiplier(),
 		ModelName:       relayInfo.OriginModelName,
 		TokenName:       tokenName,
 		Quota:           feeQuota,

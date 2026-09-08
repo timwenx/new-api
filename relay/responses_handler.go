@@ -86,7 +86,9 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeReadRequestBodyFailed, types.ErrOptionWithSkipRetry())
 		}
-		info.SetUpstreamFastModeFromRequestReader(storage)
+		if apiErr := info.SetUpstreamFastModeFromRequestReader(storage); apiErr != nil {
+			return apiErr
+		}
 		requestBody = common.ReaderOnly(storage)
 	} else {
 		convertedRequest, err := adaptor.ConvertOpenAIResponsesRequest(c, info, *request)
@@ -112,7 +114,9 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 				return newAPIErrorFromParamOverride(err)
 			}
 		}
-		info.SetUpstreamFastModeFromRequestBody(jsonData)
+		if apiErr := info.SetUpstreamFastModeFromRequestBody(jsonData); apiErr != nil {
+			return apiErr
+		}
 
 		logger.LogDebug(c, "requestBody: %s", jsonData)
 		body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)

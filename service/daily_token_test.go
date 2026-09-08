@@ -221,19 +221,71 @@ func TestModelTokenMultiplierAppliesToDailyAndWeeklyLimits(t *testing.T) {
 	assert.Equal(t, types.ErrorCodeDailyTokenLimitExceeded, apiErr.GetErrorCode())
 }
 
+func TestFastModeAppliesAfterModelMultiplierBeforeUpstream(t *testing.T) {
+	truncate(t)
+
+	info := &relaycommon.RelayInfo{
+		UserId:           312,
+		DailyTokenLimit:  15_000,
+		WeeklyTokenLimit: 15_000,
+		TokenMultiplier:  2,
+		StartTime:        time.Date(2026, time.August, 7, 12, 0, 0, 0, time.Local),
+	}
+	require.Nil(t, PreConsumeDailyTokens(info, 2_500, 2_500))
+	assert.EqualValues(t, 10_000, dailyTokenUsageForServiceTest(t, 312, "2026-08-07").UsedTokens)
+
+	require.Nil(t, info.SetUpstreamFastModeFromRequestBody([]byte(`{"service_tier":"fast"}`)))
+	assert.EqualValues(t, 15_000, dailyTokenUsageForServiceTest(t, 312, "2026-08-07").UsedTokens)
+	assert.EqualValues(t, 15_000, weeklyTokenUsageForServiceTest(t, 312, "2026-08-03").UsedTokens)
+	assert.Equal(t, 3.0, info.EffectiveTokenMultiplier())
+
+	require.Nil(t, info.SetUpstreamFastModeFromRequestBody([]byte(`{"service_tier":"flex"}`)))
+	assert.EqualValues(t, 10_000, dailyTokenUsageForServiceTest(t, 312, "2026-08-07").UsedTokens)
+	require.Nil(t, info.SetUpstreamFastModeFromRequestBody([]byte(`{"service_tier":"fast"}`)))
+
+	SettleDailyTokens(dailyTokenTestContext(), info, 5_000)
+	assert.EqualValues(t, 15_000, dailyTokenUsageForServiceTest(t, 312, "2026-08-07").UsedTokens)
+}
+
+func TestFastModeExtraReservationHonorsTokenLimit(t *testing.T) {
+	truncate(t)
+
+	info := &relaycommon.RelayInfo{
+		UserId:           313,
+		DailyTokenLimit:  14_999,
+		WeeklyTokenLimit: 14_999,
+		TokenMultiplier:  2,
+		StartTime:        time.Date(2026, time.August, 7, 12, 0, 0, 0, time.Local),
+	}
+	require.Nil(t, PreConsumeDailyTokens(info, 2_500, 2_500))
+
+	apiErr := info.SetUpstreamFastModeFromRequestBody([]byte(`{"service_tier":"fast"}`))
+	require.NotNil(t, apiErr)
+	assert.Equal(t, types.ErrorCodeDailyTokenLimitExceeded, apiErr.GetErrorCode())
+	assert.False(t, info.UpstreamFastMode)
+	assert.EqualValues(t, 10_000, dailyTokenUsageForServiceTest(t, 313, "2026-08-07").UsedTokens)
+
+	RefundDailyTokens(dailyTokenTestContext(), info)
+	assert.Zero(t, dailyTokenUsageForServiceTest(t, 313, "2026-08-07").UsedTokens)
+}
+
 func TestFractionalModelTokenMultiplierReducesCountedUsage(t *testing.T) {
 	truncate(t)
 
 	info := &relaycommon.RelayInfo{
 		UserId:           311,
-		DailyTokenLimit:  2_500,
-		WeeklyTokenLimit: 2_500,
+		DailyTokenLimit:  3_750,
+		WeeklyTokenLimit: 3_750,
 		TokenMultiplier:  0.5,
 		StartTime:        time.Date(2026, time.August, 7, 12, 0, 0, 0, time.Local),
 	}
 	require.Nil(t, PreConsumeDailyTokens(info, 2_500, 2_500))
 	assert.EqualValues(t, 2_500, dailyTokenUsageForServiceTest(t, 311, "2026-08-07").UsedTokens)
 	assert.EqualValues(t, 2_500, weeklyTokenUsageForServiceTest(t, 311, "2026-08-03").UsedTokens)
+
+	require.Nil(t, info.SetUpstreamFastModeFromRequestBody([]byte(`{"service_tier":"priority"}`)))
+	assert.EqualValues(t, 3_750, dailyTokenUsageForServiceTest(t, 311, "2026-08-07").UsedTokens)
+	assert.EqualValues(t, 3_750, weeklyTokenUsageForServiceTest(t, 311, "2026-08-03").UsedTokens)
 }
 
 func TestModelTokenMultiplierAppliesToIndependentModelWeeklyLimit(t *testing.T) {
@@ -244,13 +296,16 @@ func TestModelTokenMultiplierAppliesToIndependentModelWeeklyLimit(t *testing.T) 
 		OriginModelName:       "gpt-special",
 		DailyTokenLimit:       20_000,
 		WeeklyTokenLimit:      1,
-		ModelWeeklyTokenLimit: 10_000,
+		ModelWeeklyTokenLimit: 15_000,
 		TokenMultiplier:       2,
 		StartTime:             time.Date(2026, time.August, 7, 12, 0, 0, 0, time.Local),
 	}
 	require.Nil(t, PreConsumeDailyTokens(info, 2_500, 2_500))
 	assert.EqualValues(t, 10_000, dailyTokenUsageForServiceTest(t, 310, "2026-08-07").UsedTokens)
 	assert.EqualValues(t, 10_000, modelWeeklyTokenUsageForServiceTest(t, 310, "gpt-special", "2026-08-03").UsedTokens)
+	require.Nil(t, info.SetUpstreamFastModeFromRequestBody([]byte(`{"service_tier":"fast"}`)))
+	assert.EqualValues(t, 15_000, dailyTokenUsageForServiceTest(t, 310, "2026-08-07").UsedTokens)
+	assert.EqualValues(t, 15_000, modelWeeklyTokenUsageForServiceTest(t, 310, "gpt-special", "2026-08-03").UsedTokens)
 
 	var generalWeeklyRows int64
 	require.NoError(t, model.DB.Model(&model.UserWeeklyTokenUsage{}).Where("user_id = ?", 310).Count(&generalWeeklyRows).Error)

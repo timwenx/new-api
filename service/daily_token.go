@@ -26,7 +26,12 @@ type DailyTokenSession struct {
 	dailyEnabled       bool
 	weeklyEnabled      bool
 	modelWeeklyEnabled bool
-	tokenMultiplier    float64
+	dailyLimit         int64
+	weeklyLimit        int64
+	modelWeeklyLimit   int64
+	modelMultiplier    float64
+	usageMultiplier    float64
+	rawReservedTokens  int64
 	reservedTokens     int64
 	settled            bool
 	refunded           bool
@@ -42,15 +47,48 @@ func (s *DailyTokenSession) Settle(actualTokens int) error {
 	if actualTokens < 0 {
 		return errors.New("actual token usage cannot be negative")
 	}
-	countedTokens, err := common.ScaleTokenCount(int64(actualTokens), s.tokenMultiplier, model.MaxWeeklyTokenLimit)
+	countedTokens, err := common.ScaleTokenCount(int64(actualTokens), s.modelMultiplier*s.usageMultiplier, model.MaxWeeklyTokenLimit)
 	if err != nil {
-		return fmt.Errorf("error applying model token multiplier: %w", err)
+		return fmt.Errorf("error applying token multipliers: %w", err)
 	}
 	delta := countedTokens - s.reservedTokens
 	if err := s.adjust(delta); err != nil {
 		return err
 	}
 	s.settled = true
+	return nil
+}
+
+// SetUsageMultiplier updates the reservation after the final outbound request
+// determines whether fast mode is actually enabled.
+func (s *DailyTokenSession) SetUsageMultiplier(multiplier float64) *types.NewAPIError {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.settled || s.refunded {
+		return nil
+	}
+
+	targetTokens, err := common.ScaleTokenCount(s.rawReservedTokens, s.modelMultiplier*multiplier, model.MaxWeeklyTokenLimit)
+	if err != nil {
+		return types.NewErrorWithStatusCode(
+			fmt.Errorf("invalid usage token multiplier: %w", err),
+			types.ErrorCodeInvalidRequest,
+			http.StatusBadRequest,
+			types.ErrOptionWithSkipRetry(),
+		)
+	}
+	delta := targetTokens - s.reservedTokens
+	if delta > 0 {
+		err = s.reserve(delta)
+	} else {
+		err = s.adjust(delta)
+	}
+	if err != nil {
+		return tokenLimitAPIError(err, s.dailyLimit, s.weeklyLimit, s.modelName, s.modelWeeklyLimit)
+	}
+
+	s.usageMultiplier = multiplier
+	s.reservedTokens = targetTokens
 	return nil
 }
 
@@ -80,6 +118,62 @@ func (s *DailyTokenSession) adjust(delta int64) error {
 		)
 	}
 	return model.AdjustUserTokenLimits(s.userId, s.usageDate, s.weekStart, s.dailyEnabled, s.weeklyEnabled, delta)
+}
+
+func (s *DailyTokenSession) reserve(tokens int64) error {
+	if s.modelWeeklyEnabled {
+		return model.ReserveUserDailyAndModelWeeklyTokens(
+			s.userId,
+			s.modelName,
+			s.usageDate,
+			s.weekStart,
+			s.dailyLimit,
+			s.modelWeeklyLimit,
+			tokens,
+		)
+	}
+	return model.ReserveUserTokenLimits(
+		s.userId,
+		s.usageDate,
+		s.weekStart,
+		s.dailyLimit,
+		s.weeklyLimit,
+		tokens,
+	)
+}
+
+func tokenLimitAPIError(err error, dailyLimit int64, weeklyLimit int64, modelName string, modelWeeklyLimit int64) *types.NewAPIError {
+	if errors.Is(err, model.ErrDailyTokenLimitExceeded) {
+		return types.NewErrorWithStatusCode(
+			fmt.Errorf("每日 Token 使用量已达到限额（%d），将在站点时区 00:00 重置", dailyLimit),
+			types.ErrorCodeDailyTokenLimitExceeded,
+			http.StatusTooManyRequests,
+			types.ErrOptionWithSkipRetry(),
+			types.ErrOptionWithNoRecordErrorLog(),
+		)
+	}
+	if errors.Is(err, model.ErrWeeklyTokenLimitExceeded) {
+		return types.NewErrorWithStatusCode(
+			fmt.Errorf("每周 Token 使用量已达到限额（%d），将在站点时区下周一 00:00 重置", weeklyLimit),
+			types.ErrorCodeWeeklyTokenLimitExceeded,
+			http.StatusTooManyRequests,
+			types.ErrOptionWithSkipRetry(),
+			types.ErrOptionWithNoRecordErrorLog(),
+		)
+	}
+	if errors.Is(err, model.ErrModelWeeklyTokenLimitExceeded) {
+		return types.NewErrorWithStatusCode(
+			fmt.Errorf("模型 %s 每周 Token 使用量已达到独立限额（%d），将在站点时区下周一 00:00 重置", modelName, modelWeeklyLimit),
+			types.ErrorCodeModelWeeklyTokenLimitExceeded,
+			http.StatusTooManyRequests,
+			types.ErrOptionWithSkipRetry(),
+			types.ErrOptionWithNoRecordErrorLog(),
+		)
+	}
+	if err != nil {
+		return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+	}
+	return nil
 }
 
 func dailyTokenReservationTokens(promptTokens int, maxOutputTokens int) int64 {
@@ -148,8 +242,9 @@ func PreConsumeDailyTokens(relayInfo *relaycommon.RelayInfo, promptTokens int, m
 	}
 
 	tokenMultiplier := relayTokenMultiplier(relayInfo)
+	rawReservedTokens := dailyTokenReservationTokens(promptTokens, maxOutputTokens)
 	reservedTokens, scaleErr := common.ScaleTokenCount(
-		dailyTokenReservationTokens(promptTokens, maxOutputTokens),
+		rawReservedTokens,
 		tokenMultiplier,
 		model.MaxWeeklyTokenLimit,
 	)
@@ -167,59 +262,7 @@ func PreConsumeDailyTokens(relayInfo *relaycommon.RelayInfo, promptTokens int, m
 	}
 	usageDate := requestTime.In(time.Local).Format(time.DateOnly)
 	weekStart := model.WeeklyTokenUsageStart(requestTime)
-	var err error
-	if relayInfo.ModelWeeklyTokenLimit > 0 {
-		err = model.ReserveUserDailyAndModelWeeklyTokens(
-			relayInfo.UserId,
-			relayInfo.OriginModelName,
-			usageDate,
-			weekStart,
-			relayInfo.DailyTokenLimit,
-			relayInfo.ModelWeeklyTokenLimit,
-			reservedTokens,
-		)
-	} else {
-		err = model.ReserveUserTokenLimits(
-			relayInfo.UserId,
-			usageDate,
-			weekStart,
-			relayInfo.DailyTokenLimit,
-			relayInfo.WeeklyTokenLimit,
-			reservedTokens,
-		)
-	}
-	if errors.Is(err, model.ErrDailyTokenLimitExceeded) {
-		return types.NewErrorWithStatusCode(
-			fmt.Errorf("每日 Token 使用量已达到限额（%d），将在站点时区 00:00 重置", relayInfo.DailyTokenLimit),
-			types.ErrorCodeDailyTokenLimitExceeded,
-			http.StatusTooManyRequests,
-			types.ErrOptionWithSkipRetry(),
-			types.ErrOptionWithNoRecordErrorLog(),
-		)
-	}
-	if errors.Is(err, model.ErrWeeklyTokenLimitExceeded) {
-		return types.NewErrorWithStatusCode(
-			fmt.Errorf("每周 Token 使用量已达到限额（%d），将在站点时区下周一 00:00 重置", relayInfo.WeeklyTokenLimit),
-			types.ErrorCodeWeeklyTokenLimitExceeded,
-			http.StatusTooManyRequests,
-			types.ErrOptionWithSkipRetry(),
-			types.ErrOptionWithNoRecordErrorLog(),
-		)
-	}
-	if errors.Is(err, model.ErrModelWeeklyTokenLimitExceeded) {
-		return types.NewErrorWithStatusCode(
-			fmt.Errorf("模型 %s 每周 Token 使用量已达到独立限额（%d），将在站点时区下周一 00:00 重置", relayInfo.OriginModelName, relayInfo.ModelWeeklyTokenLimit),
-			types.ErrorCodeModelWeeklyTokenLimitExceeded,
-			http.StatusTooManyRequests,
-			types.ErrOptionWithSkipRetry(),
-			types.ErrOptionWithNoRecordErrorLog(),
-		)
-	}
-	if err != nil {
-		return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
-	}
-
-	relayInfo.DailyTokens = &DailyTokenSession{
+	session := &DailyTokenSession{
 		userId:             relayInfo.UserId,
 		modelName:          relayInfo.OriginModelName,
 		usageDate:          usageDate,
@@ -227,9 +270,18 @@ func PreConsumeDailyTokens(relayInfo *relaycommon.RelayInfo, promptTokens int, m
 		dailyEnabled:       relayInfo.DailyTokenLimit > 0,
 		weeklyEnabled:      relayInfo.WeeklyTokenLimit > 0 && relayInfo.ModelWeeklyTokenLimit == 0,
 		modelWeeklyEnabled: relayInfo.ModelWeeklyTokenLimit > 0,
-		tokenMultiplier:    tokenMultiplier,
+		dailyLimit:         relayInfo.DailyTokenLimit,
+		weeklyLimit:        relayInfo.WeeklyTokenLimit,
+		modelWeeklyLimit:   relayInfo.ModelWeeklyTokenLimit,
+		modelMultiplier:    tokenMultiplier,
+		usageMultiplier:    1,
+		rawReservedTokens:  rawReservedTokens,
 		reservedTokens:     reservedTokens,
 	}
+	if err := session.reserve(reservedTokens); err != nil {
+		return tokenLimitAPIError(err, relayInfo.DailyTokenLimit, relayInfo.WeeklyTokenLimit, relayInfo.OriginModelName, relayInfo.ModelWeeklyTokenLimit)
+	}
+	relayInfo.DailyTokens = session
 	return nil
 }
 

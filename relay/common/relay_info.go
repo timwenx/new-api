@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -661,29 +662,59 @@ func (info *RelayInfo) GetFinalRequestRelayFormat() types.RelayFormat {
 	return info.RelayFormat
 }
 
-// SetUpstreamFastModeFromRequestBody records whether the final outbound JSON
-// payload explicitly enables a fast service tier.
-func (info *RelayInfo) SetUpstreamFastModeFromRequestBody(requestBody []byte) {
+// EffectiveTokenMultiplier returns the model usage multiplier followed by the
+// fixed fast-mode multiplier when the final outbound request uses fast mode.
+func (info *RelayInfo) EffectiveTokenMultiplier() float64 {
 	if info == nil {
-		return
+		return 1
 	}
+	multiplier := info.TokenMultiplier
+	if multiplier <= 0 || math.IsNaN(multiplier) || math.IsInf(multiplier, 0) {
+		multiplier = 1
+	}
+	if info.UpstreamFastMode {
+		multiplier *= FastTokenMultiplier
+	}
+	return multiplier
+}
+
+func (info *RelayInfo) setUpstreamFastMode(enabled bool) *types.NewAPIError {
+	if info == nil {
+		return nil
+	}
+	usageMultiplier := 1.0
+	if enabled {
+		usageMultiplier = FastTokenMultiplier
+	}
+	if info.DailyTokens != nil {
+		if apiErr := info.DailyTokens.SetUsageMultiplier(usageMultiplier); apiErr != nil {
+			return apiErr
+		}
+	}
+	info.UpstreamFastMode = enabled
+	return nil
+}
+
+// SetUpstreamFastModeFromRequestBody records whether the final outbound JSON
+// payload explicitly enables a fast service tier and updates token-limit
+// reservations before the request reaches the upstream provider.
+func (info *RelayInfo) SetUpstreamFastModeFromRequestBody(requestBody []byte) *types.NewAPIError {
 	serviceTier := gjson.GetBytes(requestBody, "service_tier").String()
-	info.UpstreamFastMode = isFastServiceTier(serviceTier)
+	return info.setUpstreamFastMode(isFastServiceTier(serviceTier))
 }
 
 // SetUpstreamFastModeFromRequestReader is the passthrough equivalent of
 // SetUpstreamFastModeFromRequestBody. It restores the reader before returning
 // so the outbound request remains unchanged.
-func (info *RelayInfo) SetUpstreamFastModeFromRequestReader(requestBody io.ReadSeeker) {
+func (info *RelayInfo) SetUpstreamFastModeFromRequestReader(requestBody io.ReadSeeker) *types.NewAPIError {
 	if info == nil {
-		return
+		return nil
 	}
-	info.UpstreamFastMode = false
 	if requestBody == nil {
-		return
+		return info.setUpstreamFastMode(false)
 	}
 	if _, err := requestBody.Seek(0, io.SeekStart); err != nil {
-		return
+		return info.setUpstreamFastMode(false)
 	}
 	defer func() {
 		_, _ = requestBody.Seek(0, io.SeekStart)
@@ -693,9 +724,9 @@ func (info *RelayInfo) SetUpstreamFastModeFromRequestReader(requestBody io.ReadS
 		ServiceTier string `json:"service_tier"`
 	}
 	if err := common.DecodeJson(requestBody, &request); err != nil {
-		return
+		return info.setUpstreamFastMode(false)
 	}
-	info.UpstreamFastMode = isFastServiceTier(request.ServiceTier)
+	return info.setUpstreamFastMode(isFastServiceTier(request.ServiceTier))
 }
 
 func isFastServiceTier(serviceTier string) bool {

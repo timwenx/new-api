@@ -661,22 +661,28 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const log = row.original
         if (!isDisplayableLogType(log.type)) return null
 
-        const fastMode = parseLogOther(log.other)?.fast_mode
+        const other = parseLogOther(log.other)
+        const fastMode = other?.fast_mode
         if (typeof fastMode !== 'boolean') {
           return <span className='text-muted-foreground/50 text-xs'>-</span>
         }
 
         return (
-          <StatusBadge
-            label={fastMode ? t('Fast') : t('Normal')}
-            variant={fastMode ? 'amber' : 'neutral'}
-            size='sm'
-            copyable={false}
-            className='-ml-1.5'
-          />
+          <div className='-ml-1.5 flex items-center gap-1'>
+            <StatusBadge
+              label={fastMode ? t('Fast') : t('Normal')}
+              variant={fastMode ? 'amber' : 'neutral'}
+              size='sm'
+              copyable={false}
+            />
+            <TokenMultiplierBadge
+              multiplier={other?.fast_token_multiplier}
+              title={t('Fast')}
+            />
+          </div>
         )
       },
-      size: 88,
+      size: 128,
     },
     {
       accessorKey: 'ip',

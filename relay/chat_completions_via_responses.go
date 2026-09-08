@@ -127,7 +127,9 @@ func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, ad
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 	}
-	info.SetUpstreamFastModeFromRequestBody(jsonData)
+	if apiErr := info.SetUpstreamFastModeFromRequestBody(jsonData); apiErr != nil {
+		return nil, apiErr
+	}
 
 	body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
 	if err != nil {
