@@ -523,7 +523,7 @@ func GetUserOAuthBindingsByAdmin(c *gin.Context) {
 
 // UnbindCustomOAuth unbinds a custom OAuth provider from the current user
 func UnbindCustomOAuth(c *gin.Context) {
-	identity, ok := middleware.GetSessionAuthIdentity(c)
+	identity, ok := middleware.GetStepUpIdentity(c)
 	if !ok {
 		writeSecurityOperationError(c, service.ErrAuthTokenInvalid)
 		return

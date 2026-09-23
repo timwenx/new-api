@@ -102,6 +102,43 @@ type AdminUserCreateContext struct {
 	Role int `json:"role"`
 }
 
+// AccessTokenGenerateContext binds a creation proof to the exact grant. Scopes
+// are compared as a sorted, de-duplicated set.
+type AccessTokenGenerateContext struct {
+	Scopes    []string `json:"scopes"`
+	ExpiresAt int64    `json:"expires_at"`
+}
+
+// AccessTokenRevokeContext names exactly one token: a scoped token ID or the
+// legacy token.
+type AccessTokenRevokeContext struct {
+	TokenID int  `json:"token_id,omitempty"`
+	Legacy  bool `json:"legacy,omitempty"`
+}
+
+const (
+	maxAccessTokenContextScopes   = 128
+	maxAccessTokenContextScopeLen = 64
+)
+
+// NormalizeAccessTokenScopeList trims, de-duplicates and sorts scope keys. It
+// only checks the shape; grantability is checked against the scope catalog.
+func NormalizeAccessTokenScopeList(scopes []string) ([]string, bool) {
+	if len(scopes) == 0 || len(scopes) > maxAccessTokenContextScopes {
+		return nil, false
+	}
+	normalized := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		scope = strings.TrimSpace(scope)
+		if scope == "" || len(scope) > maxAccessTokenContextScopeLen {
+			return nil, false
+		}
+		normalized = append(normalized, scope)
+	}
+	slices.Sort(normalized)
+	return slices.Compact(normalized), true
+}
+
 // VerificationBinding contains no original operation parameters. It can safely
 // travel through a signed proof or a server-owned interactive verification flow.
 type VerificationBinding struct {
@@ -181,9 +218,30 @@ func BindVerificationOperation(operation VerificationOperation) (VerificationBin
 			return VerificationBinding{}, ErrVerificationContextInvalid
 		}
 		normalized = context
+	case VerificationScopeAccessTokenGenerate:
+		var context AccessTokenGenerateContext
+		if len(fields) != 2 || fields["scopes"] == nil || fields["expires_at"] == nil ||
+			common.Unmarshal(operation.Context, &context) != nil || context.ExpiresAt < 0 {
+			return VerificationBinding{}, ErrVerificationContextInvalid
+		}
+		scopes, ok := NormalizeAccessTokenScopeList(context.Scopes)
+		if !ok {
+			return VerificationBinding{}, ErrVerificationContextInvalid
+		}
+		context.Scopes = scopes
+		normalized = context
+	case VerificationScopeAccessTokenRevoke:
+		var context AccessTokenRevokeContext
+		if len(fields) != 1 || common.Unmarshal(operation.Context, &context) != nil || context.TokenID < 0 {
+			return VerificationBinding{}, ErrVerificationContextInvalid
+		}
+		// Exactly one target: {"token_id": n} or {"legacy": true}.
+		if (context.TokenID > 0) == context.Legacy {
+			return VerificationBinding{}, ErrVerificationContextInvalid
+		}
+		normalized = context
 	case VerificationScopePasskeyRegister, VerificationScopePasskeyDelete, VerificationScopeTwoFASetup,
 		VerificationScopeTwoFADisable, VerificationScopeTwoFABackupCodes,
-		VerificationScopeAccessTokenGenerate, VerificationScopeAccessTokenRevoke,
 		VerificationScopePasswordSet, VerificationScopePasswordChange, VerificationScopeAccountDelete:
 		if len(fields) != 0 {
 			return VerificationBinding{}, ErrVerificationContextInvalid
@@ -304,6 +362,9 @@ func GetVerificationRequirements(identity AuthIdentity, scope string) (*Verifica
 	if strings.HasPrefix(scope, verificationScopeAdminUserPrefix) && state.Role < common.RoleAdminUser {
 		return nil, ErrVerificationForbidden
 	}
+	if err := requireAccessTokenVerificationScope(identity, scope); err != nil {
+		return nil, err
+	}
 	methods, err := securityVerificationPolicy(scope, *state)
 	if err != nil {
 		return nil, err
@@ -320,6 +381,12 @@ func GetVerificationRequirements(identity AuthIdentity, scope string) (*Verifica
 			}
 		}
 		if methods[i].Method != VerificationMethodOAuth {
+			continue
+		}
+		// OAuth verification completes through a browser popup bound to a login
+		// session, which an access token cannot provide.
+		if _, ok := model.ParseAccessTokenSessionID(identity.SessionID); ok {
+			methods[i].Available, methods[i].Reason = false, "OAuth verification requires a browser sign-in. Enable two-factor authentication or a Passkey to continue."
 			continue
 		}
 		user, err := model.GetUserById(identity.UserID, false)
@@ -403,7 +470,7 @@ func RequireVerificationMethod(identity AuthIdentity, scope, method string) (*Ve
 // CompleteSecurityVerification runs after the concrete authentication ceremony.
 // Recheck the session and policy after potentially slow external authentication.
 func CompleteSecurityVerification(identity AuthIdentity, binding VerificationBinding, method string) (*SecurityProof, error) {
-	if _, _, err := ValidateLoginSession(identity); err != nil {
+	if err := ValidateStepUpIdentity(identity); err != nil {
 		return nil, err
 	}
 	if _, err := RequireVerificationMethod(identity, binding.Scope, method); err != nil {
@@ -427,7 +494,7 @@ func ConsumeOperationProof(raw string, identity AuthIdentity, operation Verifica
 	if err != nil {
 		return nil, err
 	}
-	if _, _, err := ValidateLoginSession(identity); err != nil {
+	if err := ValidateStepUpIdentity(identity); err != nil {
 		return nil, err
 	}
 	if _, err := RequireVerificationMethod(identity, binding.Scope, claims.Method); err != nil {
@@ -467,7 +534,7 @@ func ValidateFlowAuthorization(identity AuthIdentity, operation VerificationOper
 	if authorization.Scope != binding.Scope || !hmac.Equal([]byte(authorization.ContextHash), []byte(binding.ContextHash)) {
 		return model.ErrAuthFlowInvalid
 	}
-	if _, _, err := ValidateLoginSession(identity); err != nil {
+	if err := ValidateStepUpIdentity(identity); err != nil {
 		return err
 	}
 	_, err = RequireVerificationMethod(identity, binding.Scope, authorization.Method)

@@ -31,8 +31,8 @@ import {
   sideDrawerFormClassName,
   sideDrawerHeaderClassName,
 } from '@/components/drawer-layout'
+import { PermissionMatrix } from '@/components/permission-matrix'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Combobox } from '@/components/ui/combobox'
 import {
   Form,
@@ -521,52 +521,11 @@ export function UsersMutateDrawer({
                         )
                         return (
                           <FormItem>
-                            <div className='space-y-3'>
-                              {permissionCatalog.resources.map((resource) => (
-                                <div
-                                  key={resource.resource}
-                                  className='space-y-2 rounded-md border p-3'
-                                >
-                                  <div className='text-sm font-medium'>
-                                    {t(resource.label_key)}
-                                  </div>
-                                  <div className='space-y-2'>
-                                    {resource.actions.map((option) => (
-                                      <label
-                                        key={option.action}
-                                        className='flex items-start gap-3'
-                                      >
-                                        <Checkbox
-                                          checked={
-                                            selected[resource.resource]?.[
-                                              option.action
-                                            ] === true
-                                          }
-                                          onCheckedChange={(checked) => {
-                                            field.onChange({
-                                              ...selected,
-                                              [resource.resource]: {
-                                                ...selected[resource.resource],
-                                                [option.action]:
-                                                  checked === true,
-                                              },
-                                            })
-                                          }}
-                                        />
-                                        <span className='flex flex-col gap-1'>
-                                          <span className='text-sm font-medium'>
-                                            {t(option.label_key)}
-                                          </span>
-                                          <span className='text-muted-foreground text-xs'>
-                                            {t(option.description_key)}
-                                          </span>
-                                        </span>
-                                      </label>
-                                    ))}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
+                            <PermissionMatrix
+                              resources={permissionCatalog.resources}
+                              value={selected}
+                              onChange={field.onChange}
+                            />
                             <FormMessage />
                           </FormItem>
                         )

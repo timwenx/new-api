@@ -20,7 +20,7 @@ import (
 )
 
 func GetVerificationMethods(c *gin.Context) {
-	identity, ok := middleware.GetSessionAuthIdentity(c)
+	identity, ok := middleware.GetStepUpIdentity(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "当前认证方式不支持安全验证"})
 		return
@@ -148,7 +148,7 @@ func requireAdminUserProof(c *gin.Context, scope string, context any) *model.Aut
 }
 
 func UniversalVerify(c *gin.Context) {
-	identity, ok := middleware.GetSessionAuthIdentity(c)
+	identity, ok := middleware.GetStepUpIdentity(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "当前认证方式不支持安全验证"})
 		return

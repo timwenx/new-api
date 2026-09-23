@@ -76,11 +76,21 @@ export type VerificationOperation =
         | { user_id: number; provider_id: number }
     }
   | {
+      scope: 'access_token.generate'
+      context: { scopes: string[]; expires_at: number }
+    }
+  | {
+      scope: 'access_token.revoke'
+      context: { token_id: number } | { legacy: true }
+    }
+  | {
       scope: Exclude<
         SecurityProofScope,
         | 'channel.key.read'
         | 'account.binding.bind'
         | 'account.binding.unbind'
+        | 'access_token.generate'
+        | 'access_token.revoke'
         | `admin.user.${string}`
       >
       context?: Record<string, never>

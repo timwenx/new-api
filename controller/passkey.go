@@ -92,7 +92,7 @@ func PasskeyRegisterBegin(c *gin.Context) {
 		return
 	}
 
-	identity, ok := middleware.GetSessionAuthIdentity(c)
+	identity, ok := middleware.GetStepUpIdentity(c)
 	if !ok {
 		common.ApiErrorMsg(c, "当前认证方式不支持安全验证")
 		return
@@ -152,7 +152,7 @@ func PasskeyRegisterFinish(c *gin.Context) {
 		credentialRecord = nil
 	}
 
-	identity, ok := middleware.GetSessionAuthIdentity(c)
+	identity, ok := middleware.GetStepUpIdentity(c)
 	if !ok {
 		common.ApiErrorMsg(c, "当前认证方式不支持安全验证")
 		return
@@ -224,7 +224,7 @@ func PasskeyDelete(c *gin.Context) {
 		return
 	}
 
-	identity, ok := middleware.GetSessionAuthIdentity(c)
+	identity, ok := middleware.GetStepUpIdentity(c)
 	if !ok {
 		common.ApiErrorMsg(c, "当前认证方式不支持安全验证")
 		return
@@ -518,7 +518,7 @@ func PasskeyVerifyBegin(c *gin.Context) {
 		writeSecurityOperationError(c, err)
 		return
 	}
-	identity, ok := middleware.GetSessionAuthIdentity(c)
+	identity, ok := middleware.GetStepUpIdentity(c)
 	if !ok {
 		writeSecurityOperationError(c, service.ErrAuthTokenInvalid)
 		return
@@ -611,7 +611,7 @@ func PasskeyVerifyFinish(c *gin.Context) {
 		return
 	}
 
-	identity, ok := middleware.GetSessionAuthIdentity(c)
+	identity, ok := middleware.GetStepUpIdentity(c)
 	if !ok {
 		common.ApiErrorMsg(c, "当前认证方式不支持安全验证")
 		return
