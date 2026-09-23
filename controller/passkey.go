@@ -457,6 +457,10 @@ func AdminResetPasskey(c *gin.Context) {
 		common.ApiErrorMsg(c, "no permission")
 		return
 	}
+	authorization := requireAdminUserProof(c, service.VerificationScopeAdminUserPasskeyReset, service.AdminUserContext{UserID: user.Id})
+	if authorization == nil {
+		return
+	}
 
 	if _, err := model.GetPasskeyByUserID(user.Id); err != nil {
 		if errors.Is(err, model.ErrPasskeyNotFound) {
@@ -480,8 +484,9 @@ func AdminResetPasskey(c *gin.Context) {
 	}
 
 	recordManageAuditFor(c, user.Id, "user.reset_passkey", map[string]any{
-		"username": user.Username,
-		"id":       user.Id,
+		"username":            user.Username,
+		"id":                  user.Id,
+		"verification_method": authorization.Method,
 	})
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

@@ -813,6 +813,11 @@ export const STATIC_I18N_KEYS = [
   'Account binding',
   'Account unlinking',
   'Email confirmation code resend',
+  // Administrative step-up titles keyed by ManageUser action.
+  'Verify to disable user',
+  'Verify to enable user',
+  'Verify to promote user',
+  'Verify to demote user',
   // Model and vendor management labels.
   'Vendors',
   'Vendor management',

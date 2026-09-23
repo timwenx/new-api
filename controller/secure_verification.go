@@ -134,6 +134,19 @@ func writeSecurityOperationError(c *gin.Context, err error) {
 	c.JSON(status, gin.H{"success": false, "code": code, "message": message})
 }
 
+// requireAdminUserProof consumes the step-up proof for an administrative user
+// operation after the caller has already authorized the operator against the
+// managed user. context is one of the service.AdminUser*Context structs.
+func requireAdminUserProof(c *gin.Context, scope string, context any) *model.AuthFlowAuthorization {
+	payload, err := common.Marshal(context)
+	if err != nil {
+		_ = c.Error(err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"success": false, "code": "AUTH_INTERNAL_ERROR", "message": "Please try again later."})
+		return nil
+	}
+	return middleware.RequireSecurityProof(c, service.VerificationOperation{Scope: scope, Context: payload})
+}
+
 func UniversalVerify(c *gin.Context) {
 	identity, ok := middleware.GetSessionAuthIdentity(c)
 	if !ok {

@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { Pencil } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -69,12 +69,14 @@ import {
   EMPTY_PERMISSION_CATALOG,
   hasPermission,
   normalizeAdminPermissions,
+  type AdminPermissionMatrix,
 } from '@/lib/admin-permissions'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 import { accountPasswordSchema } from '@/lib/password-policy'
 import { ROLE } from '@/lib/roles'
+import { AuthOperationError } from '@/lib/secure-verification'
 import { requireServerSuccess } from '@/lib/server-error-message'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -110,10 +112,13 @@ export function UsersMutateDrawer({
 }: UsersMutateDrawerProps) {
   const { t } = useTranslation()
   const isUpdate = !!currentRow
-  const { triggerRefresh } = useUsers()
+  const { triggerRefresh, requestVerification } = useUsers()
   const currentUser = useAuthStore((s) => s.auth.user)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [quotaDialogOpen, setQuotaDialogOpen] = useState(false)
+  // Matrix as loaded from the server; an unchanged matrix is not resubmitted so
+  // routine edits of an administrator do not require step-up verification.
+  const loadedPermissions = useRef<AdminPermissionMatrix | undefined>(undefined)
 
   // Fetch groups
   const { data: groupsData } = useQuery({
@@ -143,6 +148,7 @@ export function UsersMutateDrawer({
       getUser(currentRow.id)
         .then((result) => {
           if (result.success && result.data) {
+            loadedPermissions.current = result.data.admin_permissions
             form.reset(transformUserToFormDefaults(result.data))
           } else {
             handleServerError(result, t('Failed to load'))
@@ -182,9 +188,54 @@ export function UsersMutateDrawer({
         currentRow?.id,
         permissionCatalog
       )
+      if (
+        isUpdate &&
+        payload.admin_permissions &&
+        JSON.stringify(payload.admin_permissions) ===
+          JSON.stringify(
+            normalizeAdminPermissions(
+              loadedPermissions.current,
+              permissionCatalog
+            )
+          )
+      ) {
+        delete payload.admin_permissions
+      }
+      // Resetting a password, rewriting admin permissions, or creating an
+      // administrator changes who can sign in or what they may do.
+      let proofToken: string | undefined
+      if (isUpdate && currentRow) {
+        if (payload.password || payload.admin_permissions) {
+          const proof = await requestVerification({
+            scope: 'admin.user.update',
+            context: { user_id: currentRow.id },
+            title: t('Verify to update user credentials'),
+            description: t(
+              'Confirm your identity before changing the account {{username}}.',
+              { username: currentRow.username }
+            ),
+          })
+          if (!proof) return
+          proofToken = proof.proof_token
+        }
+      } else if ((payload.role ?? 0) >= ROLE.ADMIN) {
+        const proof = await requestVerification({
+          scope: 'admin.user.create',
+          context: { role: payload.role ?? ROLE.ADMIN },
+          title: t('Verify to create administrator'),
+          description: t(
+            'Confirm your identity before creating an administrator account.'
+          ),
+        })
+        if (!proof) return
+        proofToken = proof.proof_token
+      }
       const result = isUpdate
-        ? await updateUser(payload as typeof payload & { id: number })
-        : await createUser(payload)
+        ? await updateUser(
+            payload as typeof payload & { id: number },
+            proofToken
+          )
+        : await createUser(payload, proofToken)
 
       if (result.success) {
         toast.success(
@@ -198,7 +249,10 @@ export function UsersMutateDrawer({
         handleServerError(result, t(ERROR_MESSAGES.CREATE_FAILED))
       }
     } catch (error) {
-      handleServerError(error, t(ERROR_MESSAGES.UNEXPECTED))
+      handleServerError(
+        AuthOperationError.from(error),
+        t(ERROR_MESSAGES.UNEXPECTED)
+      )
     } finally {
       setIsSubmitting(false)
     }
@@ -209,6 +263,7 @@ export function UsersMutateDrawer({
     try {
       const result = requireServerSuccess(await getUser(currentRow.id))
       if (result.success && result.data) {
+        loadedPermissions.current = result.data.admin_permissions
         form.reset(transformUserToFormDefaults(result.data))
       }
       triggerRefresh()
