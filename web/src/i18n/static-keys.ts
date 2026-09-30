@@ -885,7 +885,7 @@ export const STATIC_I18N_KEYS = [
   'Choose a time at least one hour from now',
   'Select at least one permission',
   'Failed to load access tokens',
-  'Failed to rename access token',
+  'Failed to save',
   'Created an access token',
   'Revoked an access token',
   'Renamed an access token',

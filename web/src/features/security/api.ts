@@ -67,6 +67,12 @@ export interface AccessTokenInput {
   expires_at: number
 }
 
+/** A token edit; scopes is present only when the grant changes. */
+export interface AccessTokenUpdate {
+  name: string
+  scopes?: string[]
+}
+
 export interface CreatedAccessToken {
   token: string
   item: AccessTokenItem
@@ -115,13 +121,25 @@ export async function createAccessToken(
   return created
 }
 
-export function renameAccessToken(
+// updateAccessToken renames a token and, when scopes are present, replaces its
+// grant. Changing the grant needs a security proof bound to the token and the
+// new scopes; a rename needs none.
+export function updateAccessToken(
   id: number,
-  name: string
+  input: AccessTokenUpdate,
+  proof?: { token: string; signal: AbortSignal }
 ): Promise<AccessTokenItem> {
+  const options = proof
+    ? {
+        ...authRequestOptions,
+        headers: { 'X-Security-Proof': proof.token },
+        singleUseAuthorization: true,
+        signal: proof.signal,
+      }
+    : authRequestOptions
   return authResult(
-    api.patch(`/api/user/access_tokens/${id}`, { name }, authRequestOptions),
-    'Failed to rename access token'
+    api.patch(`/api/user/access_tokens/${id}`, input, options),
+    'Failed to save'
   )
 }
 

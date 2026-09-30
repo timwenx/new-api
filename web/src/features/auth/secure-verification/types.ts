@@ -32,6 +32,7 @@ export type SecurityProofScope =
   | '2fa.disable'
   | '2fa.backup_codes.regenerate'
   | 'access_token.generate'
+  | 'access_token.update'
   | 'access_token.revoke'
   | 'account.binding.bind'
   | 'account.binding.unbind'
@@ -80,6 +81,10 @@ export type VerificationOperation =
       context: { scopes: string[]; expires_at: number }
     }
   | {
+      scope: 'access_token.update'
+      context: { token_id: number; scopes: string[] }
+    }
+  | {
       scope: 'access_token.revoke'
       context: { token_id: number } | { legacy: true }
     }
@@ -90,6 +95,7 @@ export type VerificationOperation =
         | 'account.binding.bind'
         | 'account.binding.unbind'
         | 'access_token.generate'
+        | 'access_token.update'
         | 'access_token.revoke'
         | `admin.user.${string}`
       >
