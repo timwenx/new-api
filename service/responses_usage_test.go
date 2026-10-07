@@ -7,6 +7,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/tokenkit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -272,7 +273,7 @@ func TestResponsesUsageAccumulatorMissingUsageEstimation(t *testing.T) {
 				{Type: dto.ResponsesOutputTypeItemDone, Item: &dto.ResponsesOutput{Type: dto.BuildInCallFunctionCall, Name: "shell"}},
 			},
 			wantPrompt:     100,
-			wantCompletion: CountTextToken(summary+arguments, model),
+			wantCompletion: tokenkit.Count(model, summary+arguments),
 		},
 		{
 			name: "created only then disconnect bills the prompt",
@@ -302,7 +303,7 @@ func TestResponsesUsageAccumulatorMissingUsageEstimation(t *testing.T) {
 				}},
 			},
 			wantPrompt:     100,
-			wantCompletion: CountTextToken("final answer", model),
+			wantCompletion: tokenkit.Count(model, "final answer"),
 		},
 		{
 			name: "explicit failure without usage bills nothing",

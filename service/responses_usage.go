@@ -8,6 +8,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
+	"github.com/QuantumNous/new-api/tokenkit"
 )
 
 // ResponsesUsageAccumulator owns the accounting facts for one Responses stream.
@@ -93,7 +94,7 @@ func (a *ResponsesUsageAccumulator) Finish() *dto.Usage {
 	}
 	if a.usage.CompletionTokens == 0 {
 		if output := a.outputText.String(); output != "" {
-			a.usage.CompletionTokens = CountTextToken(output, a.info.GetUpstreamModelName())
+			a.usage.CompletionTokens = tokenkit.Count(a.info.GetUpstreamModelName(), output)
 		}
 	}
 	// Upstream bills the prompt as soon as it starts generating, so a stream
