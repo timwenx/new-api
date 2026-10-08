@@ -11,6 +11,10 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
 
+// GoogleSearchGroundedPromptTool bills Gemini 2.5-and-older Google Search
+// grounding, charged once per grounded prompt.
+const GoogleSearchGroundedPromptTool = "google_search_grounded_prompt"
+
 // reservedBillableToolNames are hosted-tool keys without a built-in price
 // (Anthropic server tools reported in usage.server_tool_use). They and every
 // tool name the built-in price seed prices
