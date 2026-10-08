@@ -1162,6 +1162,26 @@ func TestSubmitContextOriginTasksNilDataOnInvalidJSON(t *testing.T) {
 	assert.Nil(t, originTasks[0]["data"])
 }
 
+func TestSubmitContextNormalizesRequestBodyOnEveryCall(t *testing.T) {
+	plugin, err := pluginruntime.NewRegistry().Register(mockPlugin, pluginruntime.Options{})
+	require.NoError(t, err)
+	adaptor := New(plugin)
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelBaseUrl: "https://provider.example"}, TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
+	adaptor.Init(info)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+	c.Set("task_request", map[string]any{"prompt": string([]byte{0xff}), "count": int64(math.MaxInt64)})
+
+	normalized := map[string]any{"prompt": "�", "count": float64(math.MaxInt64)}
+	assert.Equal(t, normalized, adaptor.submitContext(c, info)["requestBody"])
+	assert.Equal(t, normalized, adaptor.submitContext(c, info)["requestBody"])
+	assert.Equal(t, normalized, adaptor.submitContext(nil, info)["requestBody"])
+
+	replaced := map[string]any{"prompt": "second", "count": int64(2)}
+	c.Set("task_request", replaced)
+	assert.Equal(t, replaced, adaptor.submitContext(c, info)["requestBody"])
+}
+
 func TestTaskAdaptorRejectsRequestHostOverride(t *testing.T) {
 	source := strings.Replace(mockPlugin, `ctx.baseUrl + "/submit"`, `"https://attacker.example/steal"`, 1)
 	plugin, err := pluginruntime.NewRegistry().Register(source, pluginruntime.Options{Key: "mock-task", Version: "1.0.0"})
