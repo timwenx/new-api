@@ -941,6 +941,53 @@ export function extractUsageOnComplete(task, result, body) { return (body || {})
 		assert.Nil(t, ratios)
 	})
 
+	t.Run("duration -1 passes only for plugins that declare duration-auto@1", func(t *testing.T) {
+		declaring, err := pluginruntime.NewRegistry().Register(strings.Replace(source, `fetchMode: "per_task",`, `fetchMode: "per_task", requiredCapabilities: ["duration-auto@1"],`, 1), pluginruntime.Options{})
+		require.NoError(t, err)
+		for _, tc := range []struct {
+			name      string
+			declaring bool
+			body      map[string]any
+			accepted  bool
+		}{
+			{"undeclared plugins keep rejecting it", false, map[string]any{"metadata": map[string]any{"duration": -1}}, false},
+			{"vendor parameters and declared usage fields", true, map[string]any{
+				"duration": -1,
+				"metadata": map[string]any{"seconds": "-1", "parameters": map[string]any{"durationSeconds": -1}},
+			}, true},
+			{"other negative durations", true, map[string]any{"metadata": map[string]any{"duration": -2}}, false},
+			{"durations above the host limit", true, map[string]any{"metadata": map[string]any{"duration": relaycommon.MaxTaskDurationSeconds + 1}}, false},
+			{"negative counts", true, map[string]any{"metadata": map[string]any{"count": -1}}, false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				adaptor, context, info := newRequest(t, tc.body)
+				if tc.declaring {
+					adaptor = New(declaring)
+					adaptor.Init(info)
+				}
+				taskErr := adaptor.ValidateRequestAndSetAction(context, info)
+				if tc.accepted {
+					assert.Nil(t, taskErr)
+					return
+				}
+				require.NotNil(t, taskErr)
+				assert.Equal(t, "plugin_usage_invalid", taskErr.Code)
+			})
+		}
+
+		adaptor, context, info := newRequest(t, map[string]any{
+			"metadata":         map[string]any{"duration": -1},
+			"hookUsageEntries": []any{map[string]any{"name": "duration", "value": -1}},
+		})
+		adaptor = New(declaring)
+		adaptor.Init(info)
+		require.Nil(t, adaptor.ValidateRequestAndSetAction(context, info))
+		_, err = adaptor.ExtractUsageFactsValidated(context, info)
+		assert.Error(t, err, "usage facts stay non-negative")
+		_, err = adaptor.EstimateBillingValidated(context, info)
+		assert.Error(t, err, "billing ratios stay non-negative")
+	})
+
 	t.Run("declared token facts use int32 saturation instead of duration cap", func(t *testing.T) {
 		adaptor, context, info := newRequest(t, map[string]any{
 			"hookUsageEntries": []any{
