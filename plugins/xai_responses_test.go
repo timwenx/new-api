@@ -188,7 +188,7 @@ func TestXAIModeratedVideoKeepsItsCharge(t *testing.T) {
 				return
 			}
 			assert.Equal(t, []channel.TaskArtifact{{Key: "video", Type: "video", MimeType: "video/mp4"}}, artifacts)
-			content, err := adaptor.BuildContentRequest(task, "video", channel.TaskArtifactClientRequest{Method: http.MethodGet})
+			content, err := adaptor.BuildContentRequest(t.Context(), task, "video", channel.TaskArtifactClientRequest{Method: http.MethodGet})
 			require.NoError(t, err)
 			assert.Equal(t, "https://vidgen.x.ai/v.mp4", content.URL)
 		})

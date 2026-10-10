@@ -500,7 +500,7 @@ export function buildContentRequest(ctx) {
 	artifacts, err := adaptor.ListArtifacts(task)
 	require.NoError(t, err)
 	require.Equal(t, []channel.TaskArtifact{{Key: "video", Type: "video", MimeType: "video/mp4"}}, artifacts)
-	descriptor, err := adaptor.BuildContentRequest(task, "video", channel.TaskArtifactClientRequest{Method: http.MethodHead})
+	descriptor, err := adaptor.BuildContentRequest(t.Context(), task, "video", channel.TaskArtifactClientRequest{Method: http.MethodHead})
 	require.NoError(t, err)
 	require.NotNil(t, descriptor)
 	assert.Equal(t, "https://provider.example/content/video", descriptor.URL)
@@ -520,7 +520,7 @@ export function parseTaskResult(){return {status:"SUCCESS"};}
 	artifacts, err = fallback.ListArtifacts(&model.Task{})
 	require.NoError(t, err)
 	assert.Nil(t, artifacts)
-	descriptor, err = fallback.BuildContentRequest(&model.Task{}, "video", channel.TaskArtifactClientRequest{Method: http.MethodGet})
+	descriptor, err = fallback.BuildContentRequest(t.Context(), &model.Task{}, "video", channel.TaskArtifactClientRequest{Method: http.MethodGet})
 	require.NoError(t, err)
 	assert.Nil(t, descriptor)
 }
@@ -561,6 +561,7 @@ export function buildContentRequest(ctx) { return {url:"https://cdn.example/vide
 	adaptor := New(plugin)
 	adaptor.Init(&relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelBaseUrl: "https://provider.example"}})
 	descriptor, err := adaptor.BuildContentRequest(
+		t.Context(),
 		&model.Task{TaskID: "task", Data: []byte(`{}`)},
 		"video",
 		channel.TaskArtifactClientRequest{Method: http.MethodGet},
@@ -569,6 +570,59 @@ export function buildContentRequest(ctx) { return {url:"https://cdn.example/vide
 	require.NotNil(t, descriptor)
 	assert.True(t, descriptor.Credentialless)
 	assert.Equal(t, "https://cdn.example/video.mp4", descriptor.URL)
+}
+
+func TestTaskAdaptorHookFetchReachesRequestHostsOnly(t *testing.T) {
+	service.InitHttpClient()
+	extra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"from":"extra"}`))
+	}))
+	defer extra.Close()
+	base := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/info":
+			assert.Equal(t, "Bearer key", r.Header.Get("Authorization"))
+			_, _ = w.Write([]byte(`{"from":"base"}`))
+		case "/moved":
+			http.Redirect(w, r, extra.URL+"/elsewhere", http.StatusFound)
+		default:
+			t.Errorf("unexpected request %s", r.URL.Path)
+		}
+	}))
+	defer base.Close()
+	source := strings.Replace(mockPlugin, `fetchMode: "per_task",`, `fetchMode: "per_task", allowedHosts: ["`+strings.TrimPrefix(extra.URL, "http://")+`"],`, 1)
+	source = strings.Replace(source, `export function listArtifacts() { return []; }
+export function buildContentRequest() { throw new Error("artifact_not_found"); }`, `export function listArtifacts() { return [{key: "video", type: "video"}]; }
+export function buildContentRequest(ctx) {
+  const base = utils.fetch({url: ctx.baseUrl + "/info", headers: {Authorization: "Bearer " + ctx.apiKey}});
+  const extra = utils.fetch({url: "http://" + meta.allowedHosts[0] + "/info"});
+  const moved = utils.fetch({url: ctx.baseUrl + "/moved"});
+  let denied = "";
+  try { utils.fetch({url: "https://other.example/info"}); } catch (e) { denied = e.message; }
+  return {url: ctx.baseUrl + "/content", method: "GET", headers: {
+    "X-Base": base.body.from, "X-Extra": extra.body.from, "X-Moved": moved.status + " " + moved.headers.Location, "X-Denied": denied,
+  }};
+}`, 1)
+	source = strings.Replace(source, `render: function(ctx, task) { return {id: task.task_id, status: "completed"}; }`,
+		`render: function(ctx, task) { return utils.fetch({url: "https://provider.example/info"}).body; }`, 1)
+	plugin, err := pluginruntime.NewRegistry().Register(source, pluginruntime.Options{})
+	require.NoError(t, err)
+	adaptor := New(plugin)
+	adaptor.Init(&relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelBaseUrl: base.URL, ApiKey: "key"}})
+
+	descriptor, err := adaptor.BuildContentRequest(t.Context(), &model.Task{TaskID: "task", Data: []byte(`{}`)}, "video", channel.TaskArtifactClientRequest{Method: http.MethodGet})
+	require.NoError(t, err)
+	require.NotNil(t, descriptor)
+	assert.Equal(t, map[string]string{
+		"X-Base":   "base",
+		"X-Extra":  "extra",
+		"X-Moved":  "302 " + extra.URL + "/elsewhere",
+		"X-Denied": `utils.fetch to other.example failed: plugin request host "other.example" is not allowed`,
+	}, descriptor.Headers)
+
+	// Renderers run on every client read and may not fetch.
+	_, err = adaptor.ConvertToOpenAIVideo(&model.Task{TaskID: "task_public", Status: model.TaskStatusSuccess})
+	assert.ErrorContains(t, err, "utils.fetch is not available in protocols.openai_video.render")
 }
 
 func TestTaskAdaptorMapsJSContract(t *testing.T) {
