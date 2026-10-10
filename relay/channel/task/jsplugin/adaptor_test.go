@@ -2187,6 +2187,26 @@ export function parseSubmitEventDelta(ctx,event,previous) {
 			assert.Equal(t, map[string]any{"units": float64(0)}, parsed.Immediate.UsageFacts)
 		})
 	}
+
+	t.Run("delta hook exported without the declaration", func(t *testing.T) {
+		undeclared := strings.Replace(source, `requiredCapabilities:["submit-sse-delta@1"],`, "", 1)
+		undeclared = strings.Replace(undeclared, "export function parseSubmitEvent(", "function unusedSnapshotHook(", 1)
+		plugin, err := pluginruntime.CompilePlugin(undeclared, pluginruntime.Options{})
+		require.NoError(t, err)
+		require.Empty(t, plugin.Meta.RequiredCapabilities)
+		info := &relaycommon.RelayInfo{OriginModelName: "alias", ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "document", ChannelBaseUrl: "https://provider.example"}, TaskRelayInfo: &relaycommon.TaskRelayInfo{PublicTaskID: "public-document"}}
+		adaptor := New(plugin)
+		adaptor.Init(info)
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/compile", nil)
+		c.Set("task_request", map[string]any{})
+		require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info))
+		stream := "data: " + first + "\n\ndata: " + last + "\n\n"
+		response := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(stream))}
+		parsed, taskErr := adaptor.ParseResponse(c, response, info)
+		require.Nil(t, taskErr)
+		assert.JSONEq(t, `{"document":"helloworld","units":0}`, string(parsed.TaskData))
+	})
 }
 
 func TestAlibabaSubmitDeltaDoesNotMutateControlState(t *testing.T) {

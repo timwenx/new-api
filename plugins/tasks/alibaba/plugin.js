@@ -277,7 +277,7 @@ export const meta = {
   fetchMode: "per_task",
   upstreams: ["vendor", "new_api"],
   submitResponseTypes: ["json", "sse"],
-  requiredCapabilities: ["json-clone@1", "submit-sse-delta@1", "duration-auto@1"],
+  requiredCapabilities: ["duration-auto@1"],
   usageSchema: { ...WAN_IMAGE_USAGE_SCHEMA, ...wanVideoUsageSchema(WAN_VIDEO_RESOLUTIONS, false) },
   usageProfiles: [
     {
