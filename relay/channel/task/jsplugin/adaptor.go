@@ -670,7 +670,7 @@ func (a *TaskAdaptor) hookFetcher(baseURL, proxy string) pluginruntime.Fetcher {
 		if err := pluginruntime.ValidateRequestURL(request.URL, baseURL, a.plugin.Meta.AllowedHosts); err != nil {
 			return pluginruntime.FetchResponse{}, err
 		}
-		client, err := service.GetHttpClientWithProxy(proxy)
+		client, err := service.GetHttpClientWithProxySettings(proxy, a.channelSetting())
 		if err != nil {
 			return pluginruntime.FetchResponse{}, err
 		}
@@ -738,7 +738,7 @@ func (a *TaskAdaptor) doFetchDescriptor(baseURL, proxy string, descriptor reques
 	for name, value := range descriptor.Headers {
 		req.Header.Set(name, value)
 	}
-	client, err := service.GetHttpClientWithProxy(proxy)
+	client, err := service.GetHttpClientWithProxySettings(proxy, a.channelSetting())
 	if err != nil {
 		return nil, err
 	}
@@ -1176,6 +1176,15 @@ func (a *TaskAdaptor) channelType() int {
 		return 0
 	}
 	return a.info.ChannelType
+}
+
+// channelSetting is the executing channel's settings when the adaptor runs
+// with channel metadata; zero otherwise.
+func (a *TaskAdaptor) channelSetting() kitdto.ChannelSettings {
+	if a.info == nil || !a.info.HasChannelMeta() {
+		return kitdto.ChannelSettings{}
+	}
+	return a.info.ChannelSetting
 }
 
 // applyUpstreamCredentials sets ctx.upstream together with the credentials
