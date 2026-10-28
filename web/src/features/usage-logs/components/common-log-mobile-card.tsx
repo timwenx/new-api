@@ -193,6 +193,7 @@ export function CommonLogMobileCard<TData>(props: {
                   compact
                   className='min-h-5 max-w-full min-w-0 justify-end'
                   isStream={log.is_stream}
+                  isWebSocket={other?.ws === true}
                   isTask={other?.is_task === true}
                   isSyncTask={other?.task_sync === true}
                   tokensPerSecond={
@@ -208,7 +209,7 @@ export function CommonLogMobileCard<TData>(props: {
                   useTimeSec={log.use_time}
                   completionTokens={log.completion_tokens}
                   frtMs={other?.frt}
-                  isStream={log.is_stream}
+                  isStream={log.is_stream || other?.ws === true}
                   indicator='dot'
                   compact
                   className='min-h-6 max-w-full min-w-0 items-center justify-end [&>div]:justify-end'

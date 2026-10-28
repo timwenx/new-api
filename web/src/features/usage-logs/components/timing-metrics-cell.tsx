@@ -158,6 +158,7 @@ export function TimingMetricsCell(props: TimingMetricsCellProps) {
 
 interface StreamTpsCellProps {
   isStream: boolean
+  isWebSocket?: boolean
   compact?: boolean
   /** Task logs are asynchronous jobs; stream vs non-stream does not apply. */
   isTask?: boolean
@@ -170,13 +171,17 @@ interface StreamTpsCellProps {
 
 export function StreamTpsCell(props: StreamTpsCellProps) {
   const { t } = useTranslation()
+  const isStreamingTransport = props.isStream || props.isWebSocket === true
   const showStreamError =
-    props.isStream && props.streamStatus && props.streamStatus.status !== 'ok'
+    isStreamingTransport &&
+    props.streamStatus &&
+    props.streamStatus.status !== 'ok'
   const tpsLabel =
     props.tokensPerSecond != null
       ? `${Math.round(props.tokensPerSecond)} t/s`
       : '—'
   let streamLabel = props.isStream ? t('Stream') : t('Non-stream')
+  if (props.isWebSocket) streamLabel = 'WS'
   if (props.isTask) {
     streamLabel = props.isSyncTask ? t('Sync') : t('Async')
   }
@@ -192,7 +197,7 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
       <span
         className={cn(
           'inline-flex items-center gap-1 font-medium',
-          props.isStream ? 'text-info' : 'text-muted-foreground'
+          isStreamingTransport ? 'text-info' : 'text-muted-foreground'
         )}
       >
         {streamLabel}
@@ -220,7 +225,7 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
         )}
       </span>
       {(!props.compact ||
-        (props.isStream && props.tokensPerSecond != null)) && (
+        (isStreamingTransport && props.tokensPerSecond != null)) && (
         <span className='text-muted-foreground/60 px-0.5 tabular-nums'>
           {tpsLabel}
         </span>

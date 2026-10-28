@@ -715,6 +715,7 @@ export function useCommonLogsColumns(
           return (
             <StreamTpsCell
               isStream={log.is_stream}
+              isWebSocket={other?.ws === true}
               isTask={other?.is_task === true}
               isSyncTask={other?.task_sync === true}
               tokensPerSecond={tokensPerSecond}
@@ -805,7 +806,7 @@ export function useCommonLogsColumns(
               useTimeSec={useTime}
               completionTokens={log.completion_tokens}
               frtMs={other?.frt}
-              isStream={log.is_stream}
+              isStream={log.is_stream || other?.ws === true}
             />
           )
         },
