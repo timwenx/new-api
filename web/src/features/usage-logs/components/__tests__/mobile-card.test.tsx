@@ -97,6 +97,19 @@ function renderLogs(props: Parameters<typeof Fixture>[0] = {}) {
   )
 }
 
+it('shows the existing WS label for websocket usage logs', () => {
+  renderLogs({
+    logs: [
+      {
+        ...log,
+        is_stream: false,
+        other: JSON.stringify({ ws: true, frt: 1500 }),
+      },
+    ],
+  })
+  expect(screen.getByText('WS')).toBeVisible()
+})
+
 it('shows model mismatch evidence when tapping the mobile model badge', async () => {
   const user = userEvent.setup()
   renderLogs({
